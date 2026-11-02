@@ -41,7 +41,11 @@ export function respondToOffer(
   opts: { quickPickup?: boolean } = {}
 ): NegotiationResult & { round: number } {
   const { counterCents, floorCents, bestOfferCents, lastConcessionCents } = state;
-  const round = state.round + 1;
+  // Rounds count only real moves by the buyer (a higher offer, or a pickup trade).
+  // Repeats, retreats and lowballs don't use up the buyer's rounds.
+  const raised = bestOfferCents === null || offerCents > bestOfferCents;
+  const pickupTrade = Boolean(opts.quickPickup) && !state.pickupBonusUsed;
+  const round = raised || pickupTrade ? state.round + 1 : state.round;
 
   // Buyer meets or beats our current price: take our price (never charge more than we asked).
   if (offerCents >= counterCents) return { kind: "agree", priceCents: counterCents, round };
@@ -76,28 +80,33 @@ export function respondToOffer(
     return { kind: "final", priceCents: counterCents, repeated: round > MAX_ROUNDS, concessionCents: 0, pickupBonus: false, round };
   }
 
-  // Buyer repeated their best offer: hold our price instead of bidding against ourselves.
-  if (bestOfferCents !== null && offerCents === bestOfferCents) return { kind: "hold", priceCents: counterCents, round };
+  // Buyer repeated their best offer without giving anything new: hold our price.
+  if (!raised && !pickupTrade) return { kind: "hold", priceCents: counterCents, round };
 
   const target = Math.max(offerCents, floorCents);
   let step: number;
-  if (bestOfferCents === null || lastConcessionCents === null) {
+  if (!raised) {
+    // Same price, but they now offer a quick pickup: that alone earns the pickup step.
+    step = 0;
+  } else if (bestOfferCents === null || lastConcessionCents === null) {
     // First counter: the biggest step, part of the way toward the buyer.
-    step = (counterCents - target) * FIRST_CONCESSION;
+    step = Math.max(MIN_STEP_CENTS, roundTo5Dollars((counterCents - target) * FIRST_CONCESSION));
   } else {
     // Match the buyer's move, but never step down more than last time.
-    step = Math.min(offerCents - bestOfferCents, lastConcessionCents);
+    step = Math.max(MIN_STEP_CENTS, roundTo5Dollars(Math.min(offerCents - bestOfferCents, lastConcessionCents)));
   }
-  step = Math.max(MIN_STEP_CENTS, roundTo5Dollars(step));
 
   // A quick pickup is worth one extra step to a seller who needs it gone.
-  const pickupBonus = Boolean(opts.quickPickup) && !state.pickupBonusUsed;
+  const pickupBonus = pickupTrade;
   if (pickupBonus) step += PICKUP_BONUS_CENTS;
 
   const next = Math.max(floorCents, target, counterCents - step);
   if (offerCents >= next) return { kind: "agree", priceCents: offerCents, round };
   // The pickup bonus is a one-off trade, so it doesn't count toward the shrinking-steps pattern.
-  const concessionCents = Math.max(MIN_STEP_CENTS, counterCents - next - (pickupBonus ? PICKUP_BONUS_CENTS : 0));
+  // If the only step was the pickup trade, keep the previous step size for tapering.
+  const concessionCents = raised
+    ? Math.max(MIN_STEP_CENTS, counterCents - next - (pickupBonus ? PICKUP_BONUS_CENTS : 0))
+    : (lastConcessionCents ?? MIN_STEP_CENTS);
   return next === floorCents
     ? { kind: "final", priceCents: next, repeated: false, concessionCents, pickupBonus, round }
     : { kind: "counter", priceCents: next, concessionCents, pickupBonus, round };

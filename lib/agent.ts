@@ -207,7 +207,7 @@ function reply(chatId: string, text: string, handledBy: Message["handled_by"], u
 
 // What the pricing code decided for one offer. The AI only words it.
 type Decision = {
-  kind: "agree" | "counter" | "hold" | "remind" | "final" | "lowball";
+  kind: "agree" | "counter" | "hold" | "remind" | "final" | "lowball" | "explain";
   priceCents: number;
   offerCents: number;
   bestOfferCents: number | null;
@@ -237,6 +237,10 @@ function fallbackLine(d: Decision) {
       return d.repeated ? `${p} is my final offer. Just say "deal" if that works for you.` : `${p} is my best price.`;
     case "lowball":
       return `Sorry, that's too low. It's ${p}, and it's in good shape.`;
+    case "explain":
+      return d.bestOfferCents
+        ? `Right now I'm at ${p}, and your best offer so far is ${best}. Make me an offer, or ask anything about it.`
+        : `It's ${p}. Feel free to make an offer, or ask anything about it.`;
   }
 }
 
@@ -252,7 +256,7 @@ function decisionBrief(d: Decision) {
         ? `Counter-offer at ${p}, down from ${money(d.previousCents)}, and make clear this price is because they can pick up soon (the seller needs it gone this week).`
         : `Counter-offer at ${p}, down from ${money(d.previousCents)}. Use different wording from your earlier messages.`;
     case "hold":
-      return `The buyer repeated their offer. Stay at ${p} and ask them to come up a little.`;
+      return `The buyer repeated their offer without moving. Stay at ${p}. If they ask why, point out from the chat that you already came down when they came up, and that you'll move again when they do. Ask them to come up a little.`;
     case "remind":
       return d.repeated
         ? `Stay at ${p}, which is just above the ${best} the buyer offered earlier. Invite them to say "deal".`
@@ -263,13 +267,19 @@ function decisionBrief(d: Decision) {
         : `${p} is the seller's final offer in this chat. Do NOT call it the lowest possible price. Invite them to say "deal".`;
     case "lowball":
       return `The buyer's offer of ${money(d.offerCents)} is far too low. Decline politely and restate the price of ${p}.`;
+    case "explain":
+      return (
+        `The buyer made no new offer. Respond directly to what they said: if they argue about the price, give honest reasons from the item facts (without confirming or disputing claims you can't check); ` +
+        `if they ask why you won't move, point out from the chat what you already gave; if they seem confused, recap where things stand; if it's off-topic, steer back kindly. ` +
+        `The current price stays ${p}${best ? ` (their best offer so far is ${best})` : ""}: mention it and invite an offer.`
+      );
   }
 }
 
 const WRITER_INSTRUCTIONS = `You write one short chat reply (1-2 sentences, under 40 words) for a person selling a used item. You speak as the seller's assistant: friendly, plain, no emojis, no exclamation-mark spam.
 
 You are given what the reply must convey. Follow it exactly. You may refer naturally to something the buyer said (like their pickup timing), but:
-- Only mention the dollar amounts you are given. Never invent, round or change a price.
+- Only mention the dollar amounts you are given or that already appear in the chat. Never invent, round or change a price. Always write prices with a $ sign.
 - Unless told the price is the lowest the seller accepts, never imply it is: no "lowest", "can't go below", "best I can do".
 - Payment is only through a PayPal hold. Never agree to cash or other payment methods.
 - Never promise anything about the item beyond what you are given.
@@ -279,14 +289,20 @@ You are given what the reply must convey. Follow it exactly. You may refer natur
 const DOLLAR = /\$\s?(\d[\d,]*(?:\.\d{1,2})?)/g;
 // Phrases that claim a price is the seller's minimum. Only true when it's the floor.
 const LOWEST_WORDS =
-  /\b(lowest|bottom|minimum|floor|rock[- ]bottom|best I can do|can'?t go (any )?(lower|below|under)|won'?t go (any )?(lower|below|under)|as low as I can|as far as I('ll| will| can)? go|most I can (come down|do|go)|limit)\b/i;
+  /\b(lowest|bottom|minimum|price floor|rock[- ]bottom|best I can do|can'?t go (any )?(lower|below|under)|won'?t go (any )?(lower|below|under)|as low as I can|as far as I('ll| will| can)? go|most I can (come down|do|go)|limit)\b/i;
 const OTHER_PAYMENT = /\b(cash|venmo|zelle|cash ?app|check)\b/i;
 
-// Code checks the AI's wording: right price present, no other amounts, no false "lowest" claim.
-function wordingIsSafe(text: string, d: Decision, askCents: number) {
+const dollarAmounts = (text: string) =>
+  [...text.matchAll(DOLLAR)].map((m) => Math.round(Number(m[1].replace(/,/g, "")) * 100));
+
+// Code checks the AI's wording: right price present, no new amounts, no false "lowest" claim.
+// Amounts already said in the chat may be repeated ("you came up from $100", "a new one is $160").
+function wordingIsSafe(text: string, d: Decision, askCents: number, chatText: string) {
   if (!text || text.length > 300) return false;
-  const allowed = new Set([d.priceCents, d.offerCents, d.bestOfferCents, d.previousCents, askCents].filter(Boolean) as number[]);
-  const amounts = [...text.matchAll(DOLLAR)].map((m) => Math.round(Number(m[1].replace(/,/g, "")) * 100));
+  if (/\bthe buyer\b|\bthe seller's assistant\b/i.test(text)) return false; // narration, not a reply
+  const said = [...dollarAmounts(chatText), ...[...chatText.matchAll(/\b(\d{2,5})\b/g)].map((m) => Number(m[1]) * 100)];
+  const allowed = new Set([d.priceCents, d.offerCents, d.bestOfferCents, d.previousCents, askCents, ...said].filter(Boolean) as number[]);
+  const amounts = dollarAmounts(text);
   if (!amounts.includes(d.priceCents)) return false;
   if (amounts.some((a) => !allowed.has(a))) return false;
   if (!d.atFloor && LOWEST_WORDS.test(text)) return false;
@@ -308,36 +324,57 @@ async function wordDecision(
   const fallback = prefix + fallbackLine(d);
   try {
     const recent = chatMessages(chat.id)
-      .slice(-5)
+      .slice(-8)
       .map((m) => `${m.sender === "buyer" ? "Buyer" : "You"}: ${m.text}`)
       .join("\n");
     const response = await anthropic.messages.create({
       model: MODEL,
-      max_tokens: 300,
+      max_tokens: 1024,
       output_config: { effort: "low" },
       system: WRITER_INSTRUCTIONS,
       messages: [
         {
           role: "user",
           content:
-            `Item: ${listing.title}\nRecent chat:\n${recent}\n\nBuyer's latest message: ${buyerText}\n\n` +
+            `Item: ${listing.title}\nFacts: ${Object.entries(JSON.parse(listing.facts) as Record<string, string>)
+              .map(([k, v]) => `${k}: ${v}`)
+              .join("; ")}\nRecent chat:\n${recent}\n\nBuyer's latest message: ${buyerText}\n\n` +
             (notes.length ? `Already being said before your reply (don't repeat or contradict it): ${notes.join(" ")}\n\n` : "") +
             `Your reply must convey only the price part: ${decisionBrief(d)}`,
         },
       ],
     });
-    const text = response.content
-      .flatMap((b) => (b.type === "text" ? [b.text] : []))
-      .join(" ")
-      .trim();
+    // The model sometimes thinks out loud first; the reply is the last paragraph.
+    const text = (
+      response.content
+        .flatMap((b) => (b.type === "text" ? [b.text] : []))
+        .join("\n")
+        .trim()
+        .split(/\n\s*\n/)
+        .pop() ?? ""
+    ).trim();
     const usage = usageOf(response.usage);
-    if (wordingIsSafe(text, d, listing.ask_cents)) return { text: prefix + text, usage };
+    if (wordingIsSafe(text, d, listing.ask_cents, `${recent}\n${buyerText}`)) return { text: prefix + text, usage };
     console.warn(`Rejected AI wording for ${d.kind} at ${money(d.priceCents)}: ${text}`);
     return { text: fallback, usage };
   } catch (err) {
     console.error("Reply wording failed, using fixed line", err);
     return { text: fallback, usage: NO_USAGE };
   }
+}
+
+// No offer this message: the price doesn't change, the reply just explains where things stand.
+function explainDecision(chat: Chat, listing: Listing): Decision {
+  return {
+    kind: "explain",
+    priceCents: chat.counter_cents,
+    offerCents: chat.best_offer_cents ?? chat.counter_cents,
+    bestOfferCents: chat.best_offer_cents,
+    repeated: false,
+    atFloor: chat.counter_cents === listing.floor_cents,
+    pickupBonus: false,
+    previousCents: chat.counter_cents,
+  };
 }
 
 // Runs the pricing code for one offer and saves the new state. Returns the decision to word.
@@ -429,8 +466,12 @@ export async function handleBuyerMessage(chatId: string, rawText: string) {
     parts.push(worded.text);
   } else if (chat.status === "agreed" && (reading.intent === "offer" || reading.intent === "accept")) {
     parts.push(`We already agreed on ${money(chat.agreed_cents!)}. Tap the PayPal button to hold it.`);
-  } else if (reading.asks_price && chat.status === "open") {
-    parts.push(`It's ${money(chat.counter_cents)}. Feel free to make an offer.`);
+  } else if (chat.status === "open" && (reading.asks_price || (reading.intent === "other" && !reading.answer))) {
+    // No new offer: pushback ("I can get one new for $160"), confusion ("what happened?") or off-topic.
+    // Price stays put; the AI answers what they actually said and restates where things stand.
+    const worded = await wordDecision(listing, chat, text, explainDecision(chat, listing), parts.splice(0));
+    usage = addUsage(usage, worded.usage);
+    parts.push(worded.text);
   } else if (!reading.answer && !reading.needs_seller) {
     parts.push(reading.reply || "Happy to help. Any questions about it, or would you like to make an offer?");
   }
