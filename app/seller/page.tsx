@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { connection } from "next/server";
-import { expireStaleHolds, getListing, listDeals, listListings, publicDeal } from "@/lib/deals";
+import { demoMode, expireStaleHolds, getListing, listDeals, listListings, publicDeal } from "@/lib/deals";
+import { ResetDemoButton } from "@/components/ResetDemoButton";
 import { agentStats, getChat, openQuestions, sellerActivity } from "@/lib/agent";
 import { BuyerActivity } from "@/components/BuyerActivity";
 import { money } from "@/lib/format";
@@ -23,7 +24,10 @@ export default async function SellerPage() {
   return (
     <div className="space-y-8">
       <section className="space-y-3">
-        <h1 className="text-2xl font-semibold tracking-tight">Hi Maya</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-semibold tracking-tight">Hi Maya</h1>
+          {demoMode() && <ResetDemoButton />}
+        </div>
         {open.length === 0 && questions.length === 0 && (
           <p className="text-muted">Nothing needs you right now. Your assistant is handling buyers.</p>
         )}

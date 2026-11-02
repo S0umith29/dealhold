@@ -1,0 +1,36 @@
+# Render Blueprint: one web service with a small disk for the SQLite database and photos.
+services:
+  - type: web
+    name: dealhold
+    runtime: node
+    plan: starter # free also works, but data resets when the service restarts
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: DATABASE_PATH
+        value: /var/data/dealhold.db
+      - key: UPLOADS_PATH
+        value: /var/data/uploads
+      - key: DEMO_MODE
+        value: "1"
+      - key: PAYPAL_API
+        value: https://api-m.sandbox.paypal.com
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: SELLER_EMAIL
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: CHANNEL3_API_KEY
+        sync: false
+      - key: CRON_SECRET
+        generateValue: true
+    disks:
+      - name: data
+        mountPath: /var/data
+        sizeGB: 1

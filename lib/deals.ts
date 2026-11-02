@@ -277,3 +277,14 @@ export async function expireStaleHolds() {
   }
   return stale.length;
 }
+
+// Demo only (DEMO_MODE=1): put sold listings back on sale and clear buyer chats, so each judge
+// can run the whole flow. Open deals are left alone. Past deals stay as history.
+export const demoMode = () => process.env.DEMO_MODE === "1";
+
+export function resetDemo() {
+  const d = db();
+  const relisted = d.prepare("UPDATE listings SET status = 'active' WHERE status = 'sold'").run().changes;
+  d.exec("UPDATE deals SET chat_id = NULL; DELETE FROM seller_questions; DELETE FROM messages; DELETE FROM chats;");
+  return { relisted };
+}
