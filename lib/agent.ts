@@ -156,7 +156,7 @@ Fields:
 - seller_question: when needs_seller is true, the question rewritten briefly for the seller (e.g. "Does it recline?"). Otherwise null.
 - quick_pickup: true if the buyer offers to pick up today, tomorrow, or "right now/ASAP".
 - asks_price: true if the buyer asks about the price, the lowest price, or whether the price is negotiable, without proposing a number.
-- reply: one or two short, friendly sentences to send the buyer for intent "question" or "other". Include the answer when you have one. Don't discuss price: the pricing system handles that. For "offer" and "accept", reply with an empty string.
+- reply: one or two short, plain sentences (direct, no thanking or flattery) to send the buyer for intent "question" or "other". Include the answer when you have one. Don't discuss price: the pricing system handles that. For "offer" and "accept", reply with an empty string.
 
 How payment works (you may explain this): the buyer reserves with a PayPal hold. They are only charged after they check the item at pickup and give the seller their 4-digit code. If anything is wrong, they cancel and the hold is released.
 
@@ -296,7 +296,10 @@ function decisionBrief(d: Decision) {
   }
 }
 
-const WRITER_INSTRUCTIONS = `You write one short chat reply (1-2 sentences, under 40 words) for a person selling a used item. You speak as the seller's assistant: friendly and plain, like a text message. You may add one fitting emoji now and then (e.g. 🙂 👍 🛋️ 🤝), but not in every message. No exclamation-mark spam.
+const WRITER_INSTRUCTIONS = `You write one short chat reply (1-2 sentences, under 40 words) for a person selling a used item. You speak as the seller's assistant: straight, plain and transparent, like a person texting about a sale. Polite but not sugary.
+- Say the number and the reason. No thanking them for offers or raises, no "I appreciate", no "good progress", no praise, no filler.
+- Short. One sentence is often enough.
+- You may add one fitting emoji now and then (e.g. 🙂 👍 🛋️ 🤝), but not in every message. No exclamation-mark spam.
 
 You are given what the reply must convey. Follow it exactly. You may refer naturally to something the buyer said (like their pickup timing), but:
 - Only mention the dollar amounts you are given or that already appear in the chat. Never invent, round or change a price. Always write prices with a $ sign.
@@ -320,6 +323,7 @@ const dollarAmounts = (text: string) =>
 function wordingIsSafe(text: string, d: Decision, askCents: number, chatText: string) {
   if (!text || text.length > 300) return false;
   if (/\bthe buyer\b|\bthe seller's assistant\b/i.test(text)) return false; // narration, not a reply
+  if (/^(thanks|thank you|i appreciate|appreciate)/i.test(text)) return false; // straight talk, no thanking per raise
   const said = [...dollarAmounts(chatText), ...[...chatText.matchAll(/\b(\d{2,5})\b/g)].map((m) => Number(m[1]) * 100)];
   const allowed = new Set([d.priceCents, d.offerCents, d.bestOfferCents, d.previousCents, d.pickupOfferCents, d.gapCents, askCents, ...said].filter(Boolean) as number[]);
   const amounts = dollarAmounts(text);
