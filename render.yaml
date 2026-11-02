@@ -1,19 +1,19 @@
-# Render Blueprint: one web service with a small disk for the SQLite database and photos.
+# Render Blueprint: one free web service.
+# Free services have no disk, so the SQLite database and uploaded photos reset whenever the
+# service restarts or wakes from sleep. The demo sofa listing is re-created automatically on start.
+# For data that survives restarts: set plan to "starter" and add a disk mounted at /var/data,
+# then point DATABASE_PATH and UPLOADS_PATH there.
 services:
   - type: web
     name: dealhold
     runtime: node
-    plan: starter # free also works, but data resets when the service restarts
+    plan: free
     buildCommand: npm ci && npm run build
     startCommand: npm start
     healthCheckPath: /
     envVars:
       - key: NODE_VERSION
         value: "24"
-      - key: DATABASE_PATH
-        value: /var/data/dealhold.db
-      - key: UPLOADS_PATH
-        value: /var/data/uploads
       - key: DEMO_MODE
         value: "1"
       - key: PAYPAL_API
@@ -30,7 +30,3 @@ services:
         sync: false
       - key: CRON_SECRET
         generateValue: true
-    disks:
-      - name: data
-        mountPath: /var/data
-        sizeGB: 1
