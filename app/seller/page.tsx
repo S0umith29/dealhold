@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { connection } from "next/server";
-import { getListing, listDeals, listListings, publicDeal } from "@/lib/deals";
+import { expireStaleHolds, getListing, listDeals, listListings, publicDeal } from "@/lib/deals";
 import { agentStats, getChat, openQuestions, sellerActivity } from "@/lib/agent";
 import { BuyerActivity } from "@/components/BuyerActivity";
 import { money } from "@/lib/format";
@@ -11,6 +11,8 @@ import { QuestionCard } from "@/components/QuestionCard";
 // Demo has a single seller (Maya), so no login yet.
 export default async function SellerPage() {
   await connection();
+  // Also sweep on page load, so expiry works even without the scheduled job.
+  await expireStaleHolds();
   const deals = listDeals();
   const listings = listListings();
   const questions = openQuestions();

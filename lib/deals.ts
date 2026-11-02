@@ -256,3 +256,24 @@ export function createListing(l: {
     );
   return id;
 }
+
+// PayPal only guarantees held funds for about 3 days, so a pickup that hasn't happened by then
+// is treated as a no-show: the hold is released and the item goes back on sale.
+export const HOLD_DAYS = 3;
+
+export async function expireStaleHolds() {
+  const stale = db()
+    .prepare(
+      `SELECT id FROM deals WHERE status IN ('held', 'approved', 'locked')
+       AND datetime(created_at) < datetime('now', ?)`
+    )
+    .all(`-${HOLD_DAYS} days`) as { id: string }[];
+  for (const { id } of stale) {
+    try {
+      await cancelDeal(id, `Hold expired: no pickup within ${HOLD_DAYS} days`);
+    } catch (err) {
+      console.error(`Couldn't expire deal ${id}`, err);
+    }
+  }
+  return stale.length;
+}
