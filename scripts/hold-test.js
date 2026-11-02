@@ -6,8 +6,8 @@
 // PERMISSION_DENIED on void. Holding it on our own account lets us capture or void freely.
 //
 // Usage:
-//   node hold-test.js capture   # pickup code entered: capture, then pay the seller
-//   node hold-test.js void      # pickup failed: release the hold
+//   node scripts/hold-test.js capture   # pickup code entered: capture, then pay the seller
+//   node scripts/hold-test.js void      # pickup failed: release the hold
 
 require("dotenv").config();
 const readline = require("node:readline/promises");
@@ -17,7 +17,7 @@ const MODE = process.argv[2];
 const AMOUNT = "125.00";
 
 if (!["capture", "void"].includes(MODE)) {
-  console.error("Usage: node hold-test.js capture|void");
+  console.error("Usage: node scripts/hold-test.js capture|void");
   process.exit(1);
 }
 for (const [name, value] of Object.entries({ PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET, PAYPAL_API, SELLER_EMAIL })) {

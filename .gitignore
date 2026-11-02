@@ -3,3 +3,7 @@
 !.env.example
 node_modules
 .DS_Store
+data/
+.next/
+next-env.d.ts
+*.tsbuildinfo

@@ -1,16 +1,31 @@
 {
   "name": "dealhold",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "AI seller agent + PayPal hold for local used-goods sales",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "hold-test": "node scripts/hold-test.js",
+    "reset-demo": "node scripts/reset-demo.js"
   },
   "keywords": [],
   "author": "",
   "license": "MIT",
-  "type": "commonjs",
   "dependencies": {
-    "dotenv": "^18.0.9"
+    "@paypal/paypal-js": "^11.3.0",
+    "dotenv": "^18.0.9",
+    "next": "^16.4.4",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "postcss": "^8.5.32",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2"
   }
 }
