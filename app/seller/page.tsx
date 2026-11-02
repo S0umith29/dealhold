@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { connection } from "next/server";
 import { getListing, listDeals, listListings, publicDeal } from "@/lib/deals";
 import { agentStats, getChat, openQuestions, sellerActivity } from "@/lib/agent";
@@ -42,7 +43,12 @@ export default async function SellerPage() {
       </section>
 
       <section className="space-y-2">
-        <h2 className="text-sm font-medium uppercase tracking-wide text-muted">Your listings</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-medium uppercase tracking-wide text-muted">Your listings</h2>
+          <Link href="/seller/new" className="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white">
+            + New listing
+          </Link>
+        </div>
         {listings.map((l) => (
           <div key={l.id} className="space-y-2 rounded-xl border border-line bg-white p-4">
             <div className="flex justify-between">

@@ -15,9 +15,22 @@ export default async function ListingPage({ params }: PageProps<"/l/[id]">) {
   return (
     <div className="grid gap-6 md:grid-cols-[1fr_360px]">
       <article className="space-y-4">
-        <div className="aspect-[16/9] overflow-hidden rounded-xl border border-line">
-          <SofaArt />
+        <div className="aspect-[16/9] overflow-hidden rounded-xl border border-line bg-paper">
+          {listing.photos.length > 0 ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={listing.photos[0]} alt={listing.title} className="h-full w-full object-cover" />
+          ) : (
+            <SofaArt />
+          )}
         </div>
+        {listing.photos.length > 1 && (
+          <div className="flex gap-2">
+            {listing.photos.slice(1).map((src) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img key={src} src={src} alt="" className="h-16 w-16 rounded-lg border border-line object-cover" />
+            ))}
+          </div>
+        )}
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{listing.title}</h1>
           <p className="text-xl font-semibold">{money(listing.askCents)}</p>

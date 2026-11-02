@@ -81,6 +81,10 @@ const MIGRATIONS = [
   "ALTER TABLE chats ADD COLUMN pickup_bonus_used INTEGER NOT NULL DEFAULT 0",
   "ALTER TABLE messages ADD COLUMN reaction TEXT", // buyer's emoji reaction on a message
   "ALTER TABLE chats ADD COLUMN final_offer_made INTEGER NOT NULL DEFAULT 0",
+  "ALTER TABLE listings ADD COLUMN photos TEXT NOT NULL DEFAULT '[]'", // JSON list of stored photo paths
+  "ALTER TABLE listings ADD COLUMN new_price_cents INTEGER", // today's new price, from Channel3
+  "ALTER TABLE listings ADD COLUMN product_url TEXT", // the new product the seller matched
+  "ALTER TABLE listings ADD COLUMN created_at TEXT",
 ];
 
 function seed(d: DatabaseSync) {

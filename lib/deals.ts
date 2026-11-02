@@ -12,6 +12,9 @@ export type Listing = {
   ask_cents: number;
   floor_cents: number;
   status: "active" | "reserved" | "sold";
+  photos: string; // JSON list of stored photo paths
+  new_price_cents: number | null;
+  product_url: string | null;
 };
 
 export type DealStatus = "held" | "approved" | "completed" | "cancelled" | "locked";
@@ -77,6 +80,9 @@ export function publicListing(l: Listing) {
     facts: JSON.parse(l.facts) as Record<string, string>,
     askCents: l.ask_cents,
     status: l.status,
+    photos: (JSON.parse(l.photos || "[]") as string[]).map((p) => `/api/photos/${p}`),
+    newPriceCents: l.new_price_cents,
+    productUrl: l.product_url,
   };
 }
 
@@ -215,4 +221,38 @@ export async function completePickup(id: string, code: string) {
   });
   setDeal(id, { status: "completed", payout_batch_id: payout.batchId, payout_cents: payoutCents });
   setListingStatus(listing.id, "sold");
+}
+
+// Demo has one seller (Maya); a real app would take these from the signed-in seller.
+export function createListing(l: {
+  title: string;
+  description: string;
+  facts: Record<string, string>;
+  photos: string[];
+  askCents: number;
+  floorCents: number;
+  newPriceCents: number | null;
+  productUrl: string | null;
+}) {
+  const slug = l.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "item";
+  const id = `${slug}-${crypto.randomUUID().slice(0, 4)}`;
+  db()
+    .prepare(
+      `INSERT INTO listings (id, seller_name, seller_paypal_email, title, description, facts, ask_cents, floor_cents, photos, new_price_cents, product_url, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+    )
+    .run(
+      id,
+      "Maya",
+      process.env.SELLER_EMAIL ?? "",
+      l.title,
+      l.description,
+      JSON.stringify(l.facts),
+      l.askCents,
+      l.floorCents,
+      JSON.stringify(l.photos),
+      l.newPriceCents,
+      l.productUrl
+    );
+  return id;
 }
