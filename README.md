@@ -14,7 +14,7 @@ The seller's job: list, tap Approve, enter the code.
 
 ## Try it
 
-- **Hosted demo:** `<RENDER_URL>` (free hosting: the first load can take about a minute while it wakes up)
+- **Hosted demo:** https://dealhold.onrender.com (free hosting: the first load can take about a minute while it wakes up)
 - **Buyer view:** open the demo listing at `/l/sofa-123`, enter a name, chat, haggle, and reserve with PayPal.
 - **Seller view:** `/seller` shows deals to approve, questions from the assistant, the live buyer grid, and listings. "Reset demo" starts the demo fresh.
 - **PayPal sandbox buyer login:** `<SANDBOX_BUYER_EMAIL>` / `<SANDBOX_BUYER_PASSWORD>` (sandbox only, no real money). Choose **Pay in full** in the PayPal window.

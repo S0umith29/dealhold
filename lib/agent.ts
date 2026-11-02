@@ -345,6 +345,20 @@ function wordingIsSafe(text: string, d: Decision, askCents: number, chatText: st
   return true;
 }
 
+// The answer is already sent before the price part. If the AI's reply opens by restating it
+// ("No pets here, and I can do $135"), drop that opening clause.
+function dropRepeatedLead(text: string, notes: string[]) {
+  if (notes.length === 0) return text;
+  const words = (t: string) => new Set(t.toLowerCase().match(/[a-z0-9]+/g) ?? []);
+  const noteWords = words(notes.join(" "));
+  const m = /^(.+?)(?:,\s*(?:and|but|so)\s+|[.;!]\s+)(.+)$/s.exec(text);
+  if (!m) return text;
+  const lead = [...words(m[1])];
+  const overlap = lead.filter((w) => noteWords.has(w)).length / Math.max(1, lead.length);
+  if (overlap < 0.5 || !/\$\d/.test(m[2])) return text;
+  return m[2].charAt(0).toUpperCase() + m[2].slice(1);
+}
+
 const HAS_EMOJI = /\p{Extended_Pictographic}/u;
 const EMOJIS = /\s*\p{Extended_Pictographic}️?/gu;
 
@@ -406,7 +420,7 @@ async function wordDecision(
     ).trim();
     const usage = usageOf(response.usage);
     if (wordingIsSafe(text, d, listing.ask_cents, `${recent}\n${buyerText}`)) {
-      return { text: prefix + limitEmojis(text, chat.id), usage };
+      return { text: prefix + limitEmojis(dropRepeatedLead(text, notes), chat.id), usage };
     }
     console.warn(`Rejected AI wording for ${d.kind} at ${money(d.priceCents)}: ${text}`);
     return { text: fallback, usage };
