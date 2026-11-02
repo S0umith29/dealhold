@@ -1,6 +1,7 @@
 import { connection } from "next/server";
 import { getListing, listDeals, listListings, publicDeal } from "@/lib/deals";
-import { agentStats, getChat, listChats, openQuestions } from "@/lib/agent";
+import { agentStats, chatMessages, getChat, listChats, openQuestions } from "@/lib/agent";
+import { ChatTranscript } from "@/components/ChatTranscript";
 import { money } from "@/lib/format";
 import { SellerDealCard } from "@/components/SellerDealCard";
 import { CopyLink } from "@/components/CopyLink";
@@ -50,16 +51,23 @@ export default async function SellerPage() {
         {chats.length > 0 && (
           <div className="divide-y divide-line rounded-xl border border-line bg-white text-sm">
             {chats.map((c) => (
-              <div key={c.id} className="flex justify-between p-3">
-                <span>{c.buyer_name}</span>
-                <span className="text-muted">
-                  {c.status === "agreed" && c.agreed_cents
-                    ? `agreed ${money(c.agreed_cents)}, waiting for hold`
-                    : c.status === "open"
-                      ? `talking · offered ${money(c.counter_cents)}`
-                      : c.status}
-                </span>
-              </div>
+              // Maya can open any buyer's chat to see exactly what her assistant said for her.
+              <details key={c.id} className="group">
+                <summary className="flex cursor-pointer list-none justify-between p-3 hover:bg-paper">
+                  <span>
+                    <span className="mr-2 inline-block text-muted transition-transform group-open:rotate-90">›</span>
+                    {c.buyer_name}
+                  </span>
+                  <span className="text-muted">
+                    {c.status === "agreed" && c.agreed_cents
+                      ? `agreed ${money(c.agreed_cents)}, waiting for hold`
+                      : c.status === "open"
+                        ? `talking · offered ${money(c.counter_cents)}`
+                        : c.status}
+                  </span>
+                </summary>
+                <ChatTranscript messages={chatMessages(c.id)} buyerName={c.buyer_name} />
+              </details>
             ))}
           </div>
         )}
