@@ -35,8 +35,8 @@ export type NegotiationResult =
   | { kind: "counter"; priceCents: number; concessionCents: number; pickupBonus: boolean; pickupOfferCents: number | null }
   | { kind: "hold"; priceCents: number } // buyer didn't move, so neither do we
   | { kind: "remind"; priceCents: number; bestOfferCents: number } // buyer went below their own earlier offer
-  | { kind: "gap"; priceCents: number; gapCents: number } // still far apart: come closer, then we'll split
-  | { kind: "split"; priceCents: number } // meet in the middle: our final offer
+  | { kind: "gap"; priceCents: number; gapCents: number; pickupBonus: boolean } // still far apart: come closer, then we'll split
+  | { kind: "split"; priceCents: number; pickupBonus: boolean } // meet in the middle: our final offer
   | { kind: "final"; priceCents: number } // already made our final offer
   | { kind: "lowball"; priceCents: number }
   | { kind: "overpay"; priceCents: number }; // offered clearly more than our price: confirm, don't take it
@@ -87,11 +87,14 @@ export function respondToOffer(
 
   // 3. Close (third raise onward, or we're already near the floor).
   if (round >= 3 || counterCents - floorCents <= MIN_STEP_CENTS) {
-    const gap = counterCents - offerCents;
-    if (gap > SPLIT_GAP_CENTS) return { kind: "gap", priceCents: counterCents, gapCents: gap, round };
-    const middle = Math.max(floorCents, roundUpTo5Dollars((counterCents + target) / 2));
+    // Keep the pickup promise: a quick pickup takes the pickup discount off our price first.
+    const ours = pickupTrade ? Math.max(floorCents, counterCents - PICKUP_BONUS_CENTS) : counterCents;
+    if (offerCents >= ours) return { kind: "agree", priceCents: ours, round };
+    const gap = ours - offerCents;
+    if (gap > SPLIT_GAP_CENTS) return { kind: "gap", priceCents: ours, gapCents: gap, pickupBonus: pickupTrade, round };
+    const middle = Math.max(floorCents, roundUpTo5Dollars((ours + target) / 2));
     if (offerCents >= middle) return { kind: "agree", priceCents: offerCents, round };
-    return { kind: "split", priceCents: middle, round };
+    return { kind: "split", priceCents: middle, pickupBonus: pickupTrade, round };
   }
 
   // 1. Open, or 2. Trade.

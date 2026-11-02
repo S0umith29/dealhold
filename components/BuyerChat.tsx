@@ -174,7 +174,9 @@ export function BuyerChat({ listingId, sellerName, askCents, listingStatus, payp
     <div className="flex flex-col overflow-hidden rounded-xl border border-line bg-white">
       <div className="border-b border-line px-4 py-3">
         <p className="font-medium">{sellerName}&apos;s assistant</p>
-        <p className="text-xs text-muted">Replies for {sellerName}. Asks {sellerName} when it doesn&apos;t know.</p>
+        <p className="text-xs text-muted">
+          Replies for {sellerName}. Asks {sellerName} when it doesn&apos;t know. {sellerName} can read this chat.
+        </p>
       </div>
 
       <ChatBubbles messages={chat.messages} typing={sending} onReact={react} />

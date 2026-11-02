@@ -248,11 +248,13 @@ function fallbackLine(d: Decision) {
     case "remind":
       return `You offered ${best} earlier, so I'm staying at ${p}. Come up from ${best} and I'll move too.`;
     case "gap":
-      return `We're still ${money(d.gapCents!)} apart. Come a bit closer to ${p} and I'll meet you in the middle.`;
+      return d.pickupBonus
+        ? `With pickup that soon I'm at ${p}, but we're still ${money(d.gapCents!)} apart. Come closer and I'll meet you in the middle.`
+        : `We're still ${money(d.gapCents!)} apart. Come a bit closer to ${p} and I'll meet you in the middle.`;
     case "split":
       return `Let's meet in the middle at ${p}. That's my final offer. Say "deal" and it's yours.`;
     case "final":
-      return `${p} is my final offer. Just say "deal" if that works for you.`;
+      return `Still ${p}, my final offer. Say "deal" when you're ready.`;
     case "lowball":
       return `Sorry, that's too low. It's ${p}, and it's in good shape.`;
     case "overpay":
@@ -282,11 +284,13 @@ function decisionBrief(d: Decision) {
     case "remind":
       return `The buyer went below the ${best} they offered earlier. Point that out kindly, stay at ${p}, and say you'll move again when they come up from ${best}.`;
     case "gap":
-      return `The buyer came up, but you're still ${money(d.gapCents!)} apart (you're at ${p}). Don't move yet: say that if they come closer, you'll meet them in the middle.`;
+      return d.pickupBonus
+        ? `Because they'll pick up soon, you've dropped to ${p} as you promised. You're still ${money(d.gapCents!)} apart: say that if they come closer, you'll meet them in the middle.`
+        : `The buyer came up, but you're still ${money(d.gapCents!)} apart (you're at ${p}). Don't move yet: say that if they come closer, you'll meet them in the middle.`;
     case "split":
       return `Propose meeting in the middle at ${p} as your final offer, to wrap this up. Invite them to say "deal".`;
     case "final":
-      return `You already made your final offer of ${p}. Stand by it kindly, without calling it the lowest possible price, and invite them to say "deal".`;
+      return `You (the seller's side) already made a final offer of ${p}, and it stands. One short first-person sentence, e.g. "I'm staying at ${p}." plus that they can reply "deal". No apology. Don't call it the lowest possible price.`;
     case "lowball":
       return `The buyer's offer of ${money(d.offerCents)} is far too low. Decline politely and restate the price of ${p}.`;
     case "overpay":
@@ -326,7 +330,7 @@ const dollarAmounts = (text: string) =>
 // Amounts already said in the chat may be repeated ("you came up from $100", "a new one is $160").
 function wordingIsSafe(text: string, d: Decision, askCents: number, chatText: string) {
   if (!text || text.length > 300) return false;
-  if (/\bthe buyer\b|\bthe seller's assistant\b/i.test(text)) return false; // narration, not a reply
+  if (/\b(the )?buyer('s| is| has)?\b|\bthe seller's assistant\b/i.test(text)) return false; // narration, not a reply
   if (/^(thanks|thank you|i appreciate|appreciate)/i.test(text)) return false; // straight talk, no thanking per raise
   const said = [...dollarAmounts(chatText), ...[...chatText.matchAll(/\b(\d{2,5})\b/g)].map((m) => Number(m[1]) * 100)];
   const allowed = new Set([d.priceCents, d.offerCents, d.bestOfferCents, d.previousCents, d.pickupOfferCents, d.gapCents, askCents, ...said].filter(Boolean) as number[]);
