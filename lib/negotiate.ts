@@ -61,10 +61,9 @@ export function respondToOffer(
   }
 
   // Buyer went below what they already offered: don't reward the retreat.
-  // Offer to meet halfway between our price and their earlier best offer.
+  // Hold our price and remind them of their earlier, higher offer.
   if (bestOfferCents !== null && offerCents < bestOfferCents) {
-    const middle = Math.min(counterCents, Math.max(floorCents, Math.ceil((counterCents + bestOfferCents) / 2 / 500) * 500));
-    return { kind: "remind", priceCents: middle, bestOfferCents, repeated: middle === counterCents, round };
+    return { kind: "remind", priceCents: counterCents, bestOfferCents, repeated: false, round };
   }
 
   if (offerCents < floorCents * LOWBALL_RATIO) return { kind: "lowball", priceCents: counterCents, round };

@@ -241,9 +241,7 @@ function fallbackLine(d: Decision) {
     case "hold":
       return `I'm at ${p}. Can you come up a little?`;
     case "remind":
-      return d.repeated
-        ? `I'm staying at ${p}, just above your ${best} offer. Say "deal" to lock it in.`
-        : `You offered ${best} earlier. Let's meet at ${p}?`;
+      return `You offered ${best} earlier, so I'm staying at ${p}. Come up from ${best} and I'll move too.`;
     case "final":
       if (d.atFloor) return d.repeated ? `${p} is the lowest I can go. Just say "deal" if that works for you.` : `${p} is the lowest I can go.`;
       return d.repeated ? `${p} is my final offer. Just say "deal" if that works for you.` : `${p} is my best price.`;
@@ -270,9 +268,7 @@ function decisionBrief(d: Decision) {
     case "hold":
       return `The buyer repeated their offer without moving. Stay at ${p}. If they ask why, point out from the chat that you already came down when they came up, and that you'll move again when they do. Ask them to come up a little.`;
     case "remind":
-      return d.repeated
-        ? `Stay at ${p}, which is just above the ${best} the buyer offered earlier. Invite them to say "deal".`
-        : `The buyer lowered their offer below the ${best} they offered earlier. Point that out kindly and suggest meeting at ${p}.`;
+      return `The buyer went below the ${best} they offered earlier. Point that out kindly, stay at ${p}, and say you'll move again when they come up from ${best}.`;
     case "final":
       return d.atFloor
         ? `${p} is the lowest the seller will accept. Say so, and invite them to say "deal".`
@@ -301,7 +297,7 @@ You are given what the reply must convey. Follow it exactly. You may refer natur
 const DOLLAR = /\$\s?(\d[\d,]*(?:\.\d{1,2})?)/g;
 // Phrases that claim a price is the seller's minimum. Only true when it's the floor.
 const LOWEST_WORDS =
-  /\b(lowest|bottom|minimum|price floor|rock[- ]bottom|best I can do|can'?t go (any )?(lower|below|under)|won'?t go (any )?(lower|below|under)|as low as I can|as far as I('ll| will| can)? go|most I can (come down|do|go)|limit)\b/i;
+  /\b(lowest|bottom|minimum|price floor|rock[- ]bottom|best I can do|can'?t go (any )?(lower|below|under)|won'?t go (any )?(lower|below|under)|as low as I can|as far as I('ll| will| can)? go|(the )?most I can (come down|drop|do|go|lower)|limit|that's it for me)\b/i;
 const OTHER_PAYMENT = /\b(cash|venmo|zelle|cash ?app|check)\b/i;
 
 const dollarAmounts = (text: string) =>
@@ -321,6 +317,18 @@ function wordingIsSafe(text: string, d: Decision, askCents: number, chatText: st
   if (OTHER_PAYMENT.test(text)) return false;
   if (d.kind === "agree" && !/paypal/i.test(text)) return false;
   return true;
+}
+
+const HAS_EMOJI = /\p{Extended_Pictographic}/u;
+const EMOJIS = /\s*\p{Extended_Pictographic}️?/gu;
+
+// Emojis only now and then: if any of the assistant's last 3 messages had one, drop them from this one.
+function limitEmojis(text: string, chatId: string) {
+  const recentAgent = chatMessages(chatId)
+    .filter((m) => m.sender === "agent")
+    .slice(-3);
+  if (!recentAgent.some((m) => HAS_EMOJI.test(m.text))) return text;
+  return text.replace(EMOJIS, "").trim();
 }
 
 // AI writes the sentence around the code's decision; falls back to fixed wording if anything is off.
@@ -366,7 +374,9 @@ async function wordDecision(
         .pop() ?? ""
     ).trim();
     const usage = usageOf(response.usage);
-    if (wordingIsSafe(text, d, listing.ask_cents, `${recent}\n${buyerText}`)) return { text: prefix + text, usage };
+    if (wordingIsSafe(text, d, listing.ask_cents, `${recent}\n${buyerText}`)) {
+      return { text: prefix + limitEmojis(text, chat.id), usage };
+    }
     console.warn(`Rejected AI wording for ${d.kind} at ${money(d.priceCents)}: ${text}`);
     return { text: fallback, usage };
   } catch (err) {
