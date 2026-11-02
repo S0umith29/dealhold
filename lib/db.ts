@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS seller_questions (
 // Columns added after the first version; ALTER fails harmlessly if already there.
 const MIGRATIONS = [
   "ALTER TABLE deals ADD COLUMN chat_id TEXT REFERENCES chats(id)",
-  "ALTER TABLE chats ADD COLUMN last_offer_cents INTEGER",
+  "ALTER TABLE chats ADD COLUMN best_offer_cents INTEGER",
 ];
 
 function seed(d: DatabaseSync) {

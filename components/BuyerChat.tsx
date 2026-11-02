@@ -50,7 +50,16 @@ export function BuyerChat({ listingId, sellerName, askCents, listingStatus, payp
     try {
       saved = localStorage.getItem(storageKey(listingId));
     } catch {}
-    if (saved) call<ChatView>(`/api/chats/${saved}`).then(setChat).catch(() => {});
+    if (saved) {
+      call<ChatView>(`/api/chats/${saved}`)
+        .then(setChat)
+        .catch(() => {
+          // The chat no longer exists (e.g. demo reset): start fresh.
+          try {
+            localStorage.removeItem(storageKey(listingId));
+          } catch {}
+        });
+    }
   }, [listingId]);
 
   // Poll for answers the seller sends later.

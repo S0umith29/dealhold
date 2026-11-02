@@ -11,20 +11,21 @@ export type NegotiationState = {
   counterCents: number;
   floorCents: number;
   round: number;
-  lastOfferCents: number | null; // the buyer's previous offer
+  bestOfferCents: number | null; // the highest price this buyer has offered so far
 };
 
 export type NegotiationResult =
   | { kind: "agree"; priceCents: number }
   | { kind: "counter"; priceCents: number }
   | { kind: "hold"; priceCents: number } // buyer didn't move, so neither do we
+  | { kind: "remind"; priceCents: number; bestOfferCents: number; repeated: boolean } // buyer went below their own earlier offer
   | { kind: "final"; priceCents: number; repeated: boolean }
   | { kind: "lowball"; priceCents: number };
 
 const roundTo5Dollars = (cents: number) => Math.ceil(cents / 500) * 500;
 
 export function respondToOffer(state: NegotiationState, offerCents: number): NegotiationResult & { round: number } {
-  const { counterCents, floorCents, lastOfferCents } = state;
+  const { counterCents, floorCents, bestOfferCents } = state;
   const round = state.round + 1;
 
   // Buyer meets or beats our current price: take our price (never charge more than we asked).
@@ -33,6 +34,13 @@ export function respondToOffer(state: NegotiationState, offerCents: number): Neg
   // Within $5 of our price and above the floor: not worth another round.
   if (counterCents - offerCents <= CLOSE_ENOUGH_CENTS && offerCents >= floorCents) {
     return { kind: "agree", priceCents: offerCents, round };
+  }
+
+  // Buyer went below what they already offered: don't reward the retreat.
+  // Offer to meet halfway between our price and their earlier best offer.
+  if (bestOfferCents !== null && offerCents < bestOfferCents) {
+    const middle = Math.min(counterCents, Math.max(floorCents, roundTo5Dollars((counterCents + bestOfferCents) / 2)));
+    return { kind: "remind", priceCents: middle, bestOfferCents, repeated: middle === counterCents, round };
   }
 
   if (offerCents < floorCents * LOWBALL_RATIO) return { kind: "lowball", priceCents: counterCents, round };
@@ -48,8 +56,8 @@ export function respondToOffer(state: NegotiationState, offerCents: number): Neg
     return { kind: "final", priceCents: counterCents, repeated: round > MAX_ROUNDS, round };
   }
 
-  // Buyer repeated (or lowered) their offer: hold our price instead of bidding against ourselves.
-  if (lastOfferCents !== null && offerCents <= lastOfferCents) return { kind: "hold", priceCents: counterCents, round };
+  // Buyer repeated their best offer: hold our price instead of bidding against ourselves.
+  if (bestOfferCents !== null && offerCents === bestOfferCents) return { kind: "hold", priceCents: counterCents, round };
 
   const target = Math.max(offerCents, floorCents);
   // Always move at least $5, so a counter never repeats the same price.

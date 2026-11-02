@@ -17,7 +17,7 @@ export type Chat = {
   status: "open" | "agreed" | "reserved" | "closed";
   round: number;
   counter_cents: number;
-  last_offer_cents: number | null;
+  best_offer_cents: number | null; // highest price this buyer has offered
   agreed_cents: number | null;
   created_at: string;
   updated_at: string;
@@ -193,11 +193,14 @@ async function readMessage(listing: Listing, chat: Chat, text: string) {
 // ---------- Handling a buyer message: rules first, AI only when needed ----------
 
 const AVAILABLE = /\b(still )?(available|for sale)\b\??$/i;
+const BARE_NUMBER = /^(?:how about |what about |ok |okay )?\$?\s*(\d{2,5}(?:\.\d{1,2})?)\s*(?:\$|dollars|bucks)?\s*\??$/i;
 
 const LINES = {
   agree: (p: string) => `Deal at ${p}! Tap the PayPal button to hold the payment. You're only charged after you've seen it at pickup.`,
   counter: (p: string) => `I can do ${p}.`,
   hold: (p: string) => `I'm at ${p}. Can you come up a little?`,
+  remind: (best: string, p: string) => `You offered ${best} earlier. Let's meet at ${p}?`,
+  remindAgain: (best: string, p: string) => `I'm staying at ${p}, just above your ${best} offer. Say "deal" to lock it in.`,
   final: (p: string) => `${p} is the lowest I can go.`,
   finalAgain: (p: string) => `${p} is my final price. Just say "deal" if that works for you.`,
   lowball: (p: string) => `Sorry, that's too low. It's ${p}, and it's in good shape.`,
@@ -205,6 +208,41 @@ const LINES = {
 
 function reply(chatId: string, text: string, handledBy: Message["handled_by"], usage?: { input: number; output: number }) {
   addMessage(chatId, "agent", text, handledBy, usage);
+}
+
+// Runs the pricing code for one offer, saves the new state, returns what to tell the buyer.
+function negotiate(chat: Chat, listing: Listing, offerCents: number) {
+  const result = respondToOffer(
+    {
+      counterCents: chat.counter_cents,
+      floorCents: listing.floor_cents,
+      round: chat.round,
+      bestOfferCents: chat.best_offer_cents,
+    },
+    offerCents
+  );
+  const price = money(result.priceCents);
+  if (result.kind === "agree") {
+    setChat(chat.id, { status: "agreed", agreed_cents: result.priceCents, round: result.round });
+    return LINES.agree(price);
+  }
+  setChat(chat.id, {
+    counter_cents: result.priceCents,
+    round: result.round,
+    best_offer_cents: Math.max(chat.best_offer_cents ?? 0, offerCents),
+  });
+  switch (result.kind) {
+    case "lowball":
+      return LINES.lowball(price);
+    case "hold":
+      return LINES.hold(price);
+    case "remind":
+      return (result.repeated ? LINES.remindAgain : LINES.remind)(money(result.bestOfferCents), price);
+    case "final":
+      return result.repeated ? LINES.finalAgain(price) : LINES.final(price);
+    case "counter":
+      return LINES.counter(price);
+  }
 }
 
 export async function handleBuyerMessage(chatId: string, rawText: string) {
@@ -224,6 +262,11 @@ export async function handleBuyerMessage(chatId: string, rawText: string) {
   if (AVAILABLE.test(text) && text.length < 40) {
     return reply(chatId, `Yes, it's still available! It's ${money(chat.counter_cents)}.`, "rules");
   }
+  // A bare number ("80?", "$85", "90 dollars") is an offer: no AI needed, and no mixing it up with sizes.
+  const bare = BARE_NUMBER.exec(text);
+  if (bare && chat.status === "open") {
+    return reply(chatId, negotiate(chat, listing, Math.round(Number(bare[1]) * 100)), "rules");
+  }
 
   const { reading, usage } = await readMessage(listing, chat, text);
 
@@ -242,33 +285,7 @@ export async function handleBuyerMessage(chatId: string, rawText: string) {
       reading.intent === "accept" || reading.offer_dollars === null
         ? chat.counter_cents
         : Math.round(reading.offer_dollars * 100);
-    const result = respondToOffer(
-      {
-        counterCents: chat.counter_cents,
-        floorCents: listing.floor_cents,
-        round: chat.round,
-        lastOfferCents: chat.last_offer_cents,
-      },
-      offerCents
-    );
-    const price = money(result.priceCents);
-    if (result.kind === "agree") {
-      setChat(chatId, { status: "agreed", agreed_cents: result.priceCents, round: result.round });
-      parts.push(LINES.agree(price));
-    } else {
-      setChat(chatId, { counter_cents: result.priceCents, round: result.round, last_offer_cents: offerCents });
-      parts.push(
-        result.kind === "lowball"
-          ? LINES.lowball(price)
-          : result.kind === "hold"
-            ? LINES.hold(price)
-            : result.kind === "final"
-              ? result.repeated
-                ? LINES.finalAgain(price)
-                : LINES.final(price)
-              : LINES.counter(price)
-      );
-    }
+    parts.push(negotiate(chat, listing, offerCents));
   } else if (chat.status === "agreed" && (reading.intent === "offer" || reading.intent === "accept")) {
     parts.push(`We already agreed on ${money(chat.agreed_cents!)}. Tap the PayPal button to hold it.`);
   } else if (reading.asks_price && chat.status === "open") {
