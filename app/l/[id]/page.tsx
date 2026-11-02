@@ -1,9 +1,9 @@
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
-import { getListing, holdPriceFor, publicListing } from "@/lib/deals";
+import { getListing, publicListing } from "@/lib/deals";
 import { money } from "@/lib/format";
 import { SofaArt } from "@/components/SofaArt";
-import { HoldPanel } from "@/components/HoldPanel";
+import { BuyerChat } from "@/components/BuyerChat";
 
 export default async function ListingPage({ params }: PageProps<"/l/[id]">) {
   await connection();
@@ -13,7 +13,7 @@ export default async function ListingPage({ params }: PageProps<"/l/[id]">) {
   const listing = publicListing(row);
 
   return (
-    <div className="grid gap-6 md:grid-cols-[1fr_320px]">
+    <div className="grid gap-6 md:grid-cols-[1fr_360px]">
       <article className="space-y-4">
         <div className="aspect-[16/9] overflow-hidden rounded-xl border border-line">
           <SofaArt />
@@ -31,19 +31,19 @@ export default async function ListingPage({ params }: PageProps<"/l/[id]">) {
             </div>
           ))}
         </dl>
-
-        <section className="rounded-xl border border-dashed border-line bg-white p-4 text-sm text-muted">
-          <p className="font-medium text-ink">Chat with {listing.sellerName}&apos;s agent</p>
-          <p>Coming next: ask questions and make offers here. The agent replies for {listing.sellerName}.</p>
-        </section>
+        <ul className="space-y-1 text-sm text-muted">
+          <li>• PayPal holds your money when you reserve. You aren&apos;t charged yet.</li>
+          <li>• At pickup, check the item, then give {listing.sellerName} your 4-digit code.</li>
+          <li>• Not as described? Cancel, and the hold is released.</li>
+        </ul>
       </article>
 
       <aside>
-        <HoldPanel
+        <BuyerChat
           listingId={listing.id}
           sellerName={listing.sellerName}
-          priceCents={holdPriceFor(row)}
-          status={listing.status}
+          askCents={listing.askCents}
+          listingStatus={listing.status}
           paypalClientId={process.env.PAYPAL_CLIENT_ID ?? ""}
         />
       </aside>

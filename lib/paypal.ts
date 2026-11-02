@@ -54,12 +54,12 @@ type Order = {
   }[];
 };
 
-export async function createHoldOrder(opts: { listingId: string; title: string; priceCents: number }) {
+export async function createHoldOrder(opts: { customId: string; title: string; priceCents: number }) {
   const order = await call<Order>("create order", "POST", "/v2/checkout/orders", {
     intent: "AUTHORIZE",
     purchase_units: [
       {
-        custom_id: opts.listingId,
+        custom_id: opts.customId,
         description: `DealHold: ${opts.title}`.slice(0, 127),
         amount: { currency_code: "USD", value: dollars(opts.priceCents) },
       },
@@ -72,7 +72,7 @@ export async function createHoldOrder(opts: { listingId: string; title: string; 
 export async function getOrder(orderId: string) {
   const order = await call<Order>("get order", "GET", `/v2/checkout/orders/${orderId}`);
   const unit = order.purchase_units[0];
-  return { status: order.status, listingId: unit.custom_id, amountCents: toCents(unit.amount.value) };
+  return { status: order.status, customId: unit.custom_id, amountCents: toCents(unit.amount.value) };
 }
 
 export async function authorizeOrder(orderId: string) {
@@ -84,7 +84,7 @@ export async function authorizeOrder(orderId: string) {
     authId: auth.id,
     status: auth.status,
     expiresAt: auth.expiration_time,
-    listingId: unit.custom_id,
+    customId: unit.custom_id,
     amountCents: toCents(unit.amount.value),
   };
 }

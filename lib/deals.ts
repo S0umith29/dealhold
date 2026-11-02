@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { db } from "./db";
-import { authorizeOrder, captureHold, getOrder, payoutToSeller, voidHold } from "./paypal";
+import { authorizeOrder, captureHold, createHoldOrder, getOrder, payoutToSeller, voidHold } from "./paypal";
 
 export type Listing = {
   id: string;
@@ -19,6 +19,7 @@ export type DealStatus = "held" | "approved" | "completed" | "cancelled" | "lock
 export type Deal = {
   id: string;
   listing_id: string;
+  chat_id: string | null;
   buyer_name: string;
   price_cents: number;
   status: DealStatus;
@@ -109,35 +110,61 @@ function setListingStatus(id: string, status: Listing["status"]) {
   db().prepare("UPDATE listings SET status = ? WHERE id = ?").run(status, id);
 }
 
-// Price the buyer is holding. Until the agent sets prices (Nov 4), it's the ask price.
-export function holdPriceFor(listing: Listing) {
-  return listing.ask_cents;
+type AgreedChat = { id: string; listing_id: string; buyer_name: string; status: string; agreed_cents: number | null };
+
+function getAgreedChat(chatId: string) {
+  const chat = db().prepare("SELECT id, listing_id, buyer_name, status, agreed_cents FROM chats WHERE id = ?").get(chatId) as
+    | AgreedChat
+    | undefined;
+  if (!chat) throw new DealError("Chat not found.", 404);
+  if (chat.status !== "agreed" || !chat.agreed_cents) throw new DealError("Agree on a price in the chat first.", 409);
+  return chat;
+}
+
+function setChatStatus(chatId: string | null, status: string) {
+  if (chatId) db().prepare("UPDATE chats SET status = ?, updated_at = datetime('now') WHERE id = ?").run(status, chatId);
+}
+
+// Buyer tapped the PayPal button: an AUTHORIZE order for the price agreed in their chat.
+export async function createOrderForChat(chatId: string) {
+  const chat = getAgreedChat(chatId);
+  const listing = getListing(chat.listing_id)!;
+  if (listing.status !== "active") throw new DealError("Sorry, this item was just reserved by someone else.", 409);
+  return createHoldOrder({ customId: `${listing.id}:${chat.id}`, title: listing.title, priceCents: chat.agreed_cents! });
 }
 
 // Buyer approved in PayPal: place the hold and open a deal. Returns the pickup code once.
-export async function openDealFromOrder(orderId: string, buyerName: string) {
+export async function openDealFromOrder(orderId: string) {
   const existing = db().prepare("SELECT id FROM deals WHERE paypal_order_id = ?").get(orderId);
   if (existing) throw new DealError("This payment already has a deal.", 409);
 
   const order = await getOrder(orderId);
-  const listing = order.listingId ? getListing(order.listingId) : undefined;
-  if (!listing) throw new DealError("Unknown listing for this payment.", 404);
+  const [listingId, chatId] = (order.customId ?? "").split(":");
+  const listing = listingId ? getListing(listingId) : undefined;
+  if (!listing || !chatId) throw new DealError("Unknown listing for this payment.", 404);
+  const chat = getAgreedChat(chatId);
 
   const auth = await authorizeOrder(orderId);
 
-  // Someone else reserved it while this buyer was in PayPal, or the amount was tampered with.
-  if (listing.status !== "active" || auth.amountCents < listing.floor_cents) {
+  // Someone else reserved it while this buyer was in PayPal, or the amount doesn't match the deal.
+  if (listing.status !== "active" || auth.amountCents !== chat.agreed_cents) {
     await voidHold(auth.authId);
-    throw new DealError(listing.status !== "active" ? "Sorry, this item was just reserved by someone else. You weren't charged." : "Invalid amount.", 409);
+    throw new DealError(
+      listing.status !== "active"
+        ? "Sorry, this item was just reserved by someone else. You weren't charged."
+        : "The amount doesn't match your agreed price. You weren't charged.",
+      409
+    );
   }
 
   const id = crypto.randomUUID();
   const code = String(crypto.randomInt(1000, 10000));
   db().prepare(
-    `INSERT INTO deals (id, listing_id, buyer_name, price_cents, status, paypal_order_id, paypal_auth_id, pickup_code_hash, hold_expires_at)
-     VALUES (?, ?, ?, ?, 'held', ?, ?, ?, ?)`
-  ).run(id, listing.id, buyerName, auth.amountCents, orderId, auth.authId, hashCode(id, code), auth.expiresAt);
+    `INSERT INTO deals (id, listing_id, chat_id, buyer_name, price_cents, status, paypal_order_id, paypal_auth_id, pickup_code_hash, hold_expires_at)
+     VALUES (?, ?, ?, ?, ?, 'held', ?, ?, ?, ?)`
+  ).run(id, listing.id, chat.id, chat.buyer_name, auth.amountCents, orderId, auth.authId, hashCode(id, code), auth.expiresAt);
   setListingStatus(listing.id, "reserved");
+  setChatStatus(chat.id, "reserved");
   return { dealId: id, code };
 }
 
@@ -159,6 +186,7 @@ export async function cancelDeal(id: string, reason: string) {
   await voidHold(deal.paypal_auth_id);
   setDeal(id, { status: "cancelled", cancel_reason: reason });
   setListingStatus(deal.listing_id, "active");
+  setChatStatus(deal.chat_id, "closed");
 }
 
 // Seller types the buyer's code: capture the hold, then pay the seller.

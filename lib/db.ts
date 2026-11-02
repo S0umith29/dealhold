@@ -36,7 +36,48 @@ CREATE TABLE IF NOT EXISTS deals (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- One chat per buyer per listing, run by the seller's agent.
+CREATE TABLE IF NOT EXISTS chats (
+  id TEXT PRIMARY KEY,
+  listing_id TEXT NOT NULL REFERENCES listings(id),
+  buyer_name TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open',   -- open | agreed | reserved | closed
+  round INTEGER NOT NULL DEFAULT 0,      -- buyer offers so far
+  counter_cents INTEGER NOT NULL,        -- the agent's current price
+  agreed_cents INTEGER,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  chat_id TEXT NOT NULL REFERENCES chats(id),
+  sender TEXT NOT NULL,                  -- buyer | agent
+  text TEXT NOT NULL,
+  handled_by TEXT,                       -- rules | ai | seller (agent messages only)
+  input_tokens INTEGER NOT NULL DEFAULT 0,
+  output_tokens INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Questions the agent couldn't answer from the facts. Asked once, answer reused.
+CREATE TABLE IF NOT EXISTS seller_questions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  listing_id TEXT NOT NULL REFERENCES listings(id),
+  chat_id TEXT NOT NULL REFERENCES chats(id),
+  question TEXT NOT NULL,
+  answer TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  answered_at TEXT
+);
 `;
+
+// Columns added after the first version; ALTER fails harmlessly if already there.
+const MIGRATIONS = [
+  "ALTER TABLE deals ADD COLUMN chat_id TEXT REFERENCES chats(id)",
+  "ALTER TABLE chats ADD COLUMN last_offer_cents INTEGER",
+];
 
 function seed(d: DatabaseSync) {
   const exists = d.prepare("SELECT 1 FROM listings WHERE id = ?").get("sofa-123");
@@ -68,6 +109,11 @@ function open() {
   const d = new DatabaseSync(dbPath, { timeout: 5000 });
   d.exec("PRAGMA journal_mode = WAL;");
   d.exec(SCHEMA);
+  for (const sql of MIGRATIONS) {
+    try {
+      d.exec(sql);
+    } catch {}
+  }
   seed(d);
   return d;
 }
