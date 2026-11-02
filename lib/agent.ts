@@ -18,6 +18,8 @@ export type Chat = {
   round: number;
   counter_cents: number;
   best_offer_cents: number | null; // highest price this buyer has offered
+  last_concession_cents: number | null; // how much our previous counter came down
+  pickup_bonus_used: number; // 1 once the quick-pickup step has been given
   agreed_cents: number | null;
   created_at: string;
   updated_at: string;
@@ -126,6 +128,7 @@ const Reading = z.object({
   needs_seller: z.boolean(),
   seller_question: z.string().nullable(),
   asks_price: z.boolean(),
+  quick_pickup: z.boolean(),
   reply: z.string(),
 });
 type Reading = z.infer<typeof Reading>;
@@ -138,6 +141,7 @@ Fields:
 - answer: if the buyer asks something, answer it using ONLY the item facts and the seller's earlier answers below. If those don't contain the answer, set answer to null. Never guess or invent details.
 - needs_seller: true only if the buyer asked something about the item that the facts and earlier answers don't cover.
 - seller_question: when needs_seller is true, the question rewritten briefly for the seller (e.g. "Does it recline?"). Otherwise null.
+- quick_pickup: true if the buyer offers to pick up today, tomorrow, or "right now/ASAP".
 - asks_price: true if the buyer asks about the price, the lowest price, or whether the price is negotiable, without proposing a number.
 - reply: one or two short, friendly sentences to send the buyer for intent "question" or "other". Include the answer when you have one. Don't discuss price: the pricing system handles that. For "offer" and "accept", reply with an empty string.
 
@@ -209,6 +213,8 @@ type Decision = {
   bestOfferCents: number | null;
   repeated: boolean;
   atFloor: boolean;
+  pickupBonus: boolean; // this step was traded for a quick pickup
+  previousCents: number; // our price before this offer
 };
 
 // Fixed wording: used if the AI's wording fails the checks below. Never claims "lowest" unless it's the floor.
@@ -219,7 +225,7 @@ function fallbackLine(d: Decision) {
     case "agree":
       return `Deal at ${p}! Tap the PayPal button to hold the payment. You're only charged after you've seen it at pickup.`;
     case "counter":
-      return `I can do ${p}.`;
+      return d.pickupBonus ? `Since you can pick it up soon, I can do ${p}.` : `I can do ${p}.`;
     case "hold":
       return `I'm at ${p}. Can you come up a little?`;
     case "remind":
@@ -242,7 +248,9 @@ function decisionBrief(d: Decision) {
     case "agree":
       return `The deal is agreed at ${p}. Confirm it warmly, and tell the buyer to tap the PayPal button below to hold the payment. They're only charged after they've seen the item at pickup.`;
     case "counter":
-      return `Counter-offer at ${p}.`;
+      return d.pickupBonus
+        ? `Counter-offer at ${p}, down from ${money(d.previousCents)}, and make clear this price is because they can pick up soon (the seller needs it gone this week).`
+        : `Counter-offer at ${p}, down from ${money(d.previousCents)}. Use different wording from your earlier messages.`;
     case "hold":
       return `The buyer repeated their offer. Stay at ${p} and ask them to come up a little.`;
     case "remind":
@@ -271,13 +279,13 @@ You are given what the reply must convey. Follow it exactly. You may refer natur
 const DOLLAR = /\$\s?(\d[\d,]*(?:\.\d{1,2})?)/g;
 // Phrases that claim a price is the seller's minimum. Only true when it's the floor.
 const LOWEST_WORDS =
-  /\b(lowest|bottom|minimum|floor|rock[- ]bottom|best I can do|can'?t go (any )?(lower|below|under)|won'?t go (any )?(lower|below|under)|as low as I can)\b/i;
+  /\b(lowest|bottom|minimum|floor|rock[- ]bottom|best I can do|can'?t go (any )?(lower|below|under)|won'?t go (any )?(lower|below|under)|as low as I can|as far as I('ll| will| can)? go|most I can (come down|do|go)|limit)\b/i;
 const OTHER_PAYMENT = /\b(cash|venmo|zelle|cash ?app|check)\b/i;
 
 // Code checks the AI's wording: right price present, no other amounts, no false "lowest" claim.
 function wordingIsSafe(text: string, d: Decision, askCents: number) {
   if (!text || text.length > 300) return false;
-  const allowed = new Set([d.priceCents, d.offerCents, d.bestOfferCents, askCents].filter(Boolean) as number[]);
+  const allowed = new Set([d.priceCents, d.offerCents, d.bestOfferCents, d.previousCents, askCents].filter(Boolean) as number[]);
   const amounts = [...text.matchAll(DOLLAR)].map((m) => Math.round(Number(m[1].replace(/,/g, "")) * 100));
   if (!amounts.includes(d.priceCents)) return false;
   if (amounts.some((a) => !allowed.has(a))) return false;
@@ -333,16 +341,21 @@ async function wordDecision(
 }
 
 // Runs the pricing code for one offer and saves the new state. Returns the decision to word.
-function negotiate(chat: Chat, listing: Listing, offerCents: number): Decision {
+function negotiate(chat: Chat, listing: Listing, offerCents: number, quickPickup = false): Decision {
   const result = respondToOffer(
     {
       counterCents: chat.counter_cents,
       floorCents: listing.floor_cents,
       round: chat.round,
       bestOfferCents: chat.best_offer_cents,
+      lastConcessionCents: chat.last_concession_cents,
+      pickupBonusUsed: Boolean(chat.pickup_bonus_used),
     },
-    offerCents
+    offerCents,
+    { quickPickup }
   );
+  const conceded = "concessionCents" in result && result.concessionCents > 0;
+  const pickupBonus = "pickupBonus" in result && result.pickupBonus;
   if (result.kind === "agree") {
     setChat(chat.id, { status: "agreed", agreed_cents: result.priceCents, round: result.round });
   } else {
@@ -350,6 +363,8 @@ function negotiate(chat: Chat, listing: Listing, offerCents: number): Decision {
       counter_cents: result.priceCents,
       round: result.round,
       best_offer_cents: Math.max(chat.best_offer_cents ?? 0, offerCents),
+      ...(conceded ? { last_concession_cents: result.concessionCents } : {}),
+      ...(pickupBonus ? { pickup_bonus_used: 1 } : {}),
     });
   }
   return {
@@ -359,6 +374,8 @@ function negotiate(chat: Chat, listing: Listing, offerCents: number): Decision {
     bestOfferCents: result.kind === "remind" ? result.bestOfferCents : chat.best_offer_cents,
     repeated: "repeated" in result ? result.repeated : false,
     atFloor: result.priceCents === listing.floor_cents,
+    pickupBonus,
+    previousCents: chat.counter_cents,
   };
 }
 
@@ -406,7 +423,8 @@ export async function handleBuyerMessage(chatId: string, rawText: string) {
       reading.intent === "accept" || reading.offer_dollars === null
         ? chat.counter_cents
         : Math.round(reading.offer_dollars * 100);
-    const worded = await wordDecision(listing, chat, text, negotiate(chat, listing, offerCents), parts.splice(0));
+    const decision = negotiate(chat, listing, offerCents, reading.quick_pickup);
+    const worded = await wordDecision(listing, chat, text, decision, parts.splice(0));
     usage = addUsage(usage, worded.usage);
     parts.push(worded.text);
   } else if (chat.status === "agreed" && (reading.intent === "offer" || reading.intent === "accept")) {
