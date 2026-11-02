@@ -17,6 +17,8 @@ const CLOSE_ENOUGH_CENTS = 500;
 const PICKUP_BONUS_CENTS = 500;
 // From the third move on, we split the difference only once the gap is this small.
 const SPLIT_GAP_CENTS = 2500;
+// An offer this far above our price is confirmed rather than accepted.
+const OVERPAY_MARGIN_CENTS = 1000;
 
 export type NegotiationState = {
   counterCents: number;
@@ -36,7 +38,8 @@ export type NegotiationResult =
   | { kind: "gap"; priceCents: number; gapCents: number } // still far apart: come closer, then we'll split
   | { kind: "split"; priceCents: number } // meet in the middle: our final offer
   | { kind: "final"; priceCents: number } // already made our final offer
-  | { kind: "lowball"; priceCents: number };
+  | { kind: "lowball"; priceCents: number }
+  | { kind: "overpay"; priceCents: number }; // offered clearly more than our price: confirm, don't take it
 
 const roundUpTo5Dollars = (cents: number) => Math.ceil(cents / 500) * 500;
 const roundTo5Dollars = (cents: number) => Math.round(cents / 500) * 500;
@@ -44,7 +47,7 @@ const roundTo5Dollars = (cents: number) => Math.round(cents / 500) * 500;
 export function respondToOffer(
   state: NegotiationState,
   offerCents: number,
-  opts: { quickPickup?: boolean } = {}
+  opts: { quickPickup?: boolean; accepting?: boolean } = {}
 ): NegotiationResult & { round: number } {
   const { counterCents, floorCents, bestOfferCents, lastConcessionCents } = state;
   const raised = bestOfferCents === null || offerCents > bestOfferCents;
@@ -54,6 +57,10 @@ export function respondToOffer(
   // They accept our price, and add a quick pickup: honor the pickup discount we offered.
   if (offerCents >= counterCents && pickupTrade) {
     return { kind: "agree", priceCents: Math.max(floorCents, counterCents - PICKUP_BONUS_CENTS), round };
+  }
+  // Clearly more than our price (often a typo, e.g. 220 for 120): confirm our price instead of closing.
+  if (offerCents > counterCents + OVERPAY_MARGIN_CENTS && !opts.accepting) {
+    return { kind: "overpay", priceCents: counterCents, round: state.round };
   }
   // Buyer meets or beats our current price: take our price (never charge more than we asked).
   if (offerCents >= counterCents) return { kind: "agree", priceCents: counterCents, round };

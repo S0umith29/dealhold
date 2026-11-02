@@ -220,7 +220,7 @@ function reply(chatId: string, text: string, handledBy: Message["handled_by"], u
 
 // What the pricing code decided for one offer. The AI only words it.
 type Decision = {
-  kind: "agree" | "counter" | "hold" | "remind" | "gap" | "split" | "final" | "lowball" | "explain";
+  kind: "agree" | "counter" | "hold" | "remind" | "gap" | "split" | "final" | "lowball" | "overpay" | "explain";
   priceCents: number;
   offerCents: number;
   bestOfferCents: number | null;
@@ -255,6 +255,8 @@ function fallbackLine(d: Decision) {
       return `${p} is my final offer. Just say "deal" if that works for you.`;
     case "lowball":
       return `Sorry, that's too low. It's ${p}, and it's in good shape.`;
+    case "overpay":
+      return `Just to be clear, it's ${p}, not ${money(d.offerCents)}. Want it at ${p}?`;
     case "explain":
       return d.bestOfferCents
         ? `Right now I'm at ${p}, and your best offer so far is ${best}. Make me an offer, or ask anything about it.`
@@ -287,6 +289,8 @@ function decisionBrief(d: Decision) {
       return `You already made your final offer of ${p}. Stand by it kindly, without calling it the lowest possible price, and invite them to say "deal".`;
     case "lowball":
       return `The buyer's offer of ${money(d.offerCents)} is far too low. Decline politely and restate the price of ${p}.`;
+    case "overpay":
+      return `The buyer offered ${money(d.offerCents)}, which is more than the price of ${p} (maybe a typo). Be transparent: say the price is ${p}, not ${money(d.offerCents)}, and ask if they want it at ${p}. Don't close the deal yet.`;
     case "explain":
       return (
         `The buyer made no new offer. Respond directly to what they said: if they argue about the price, give honest reasons from the item facts (without confirming or disputing claims you can't check); ` +
@@ -422,7 +426,7 @@ function explainDecision(chat: Chat, listing: Listing): Decision {
 }
 
 // Runs the pricing code for one offer and saves the new state. Returns the decision to word.
-function negotiate(chat: Chat, listing: Listing, offerCents: number, quickPickup = false): Decision {
+function negotiate(chat: Chat, listing: Listing, offerCents: number, quickPickup = false, accepting = false): Decision {
   const result = respondToOffer(
     {
       counterCents: chat.counter_cents,
@@ -434,7 +438,7 @@ function negotiate(chat: Chat, listing: Listing, offerCents: number, quickPickup
       closed: Boolean(chat.final_offer_made),
     },
     offerCents,
-    { quickPickup }
+    { quickPickup, accepting }
   );
   const conceded = "concessionCents" in result && result.concessionCents > 0;
   const pickupBonus = "pickupBonus" in result && result.pickupBonus;
@@ -444,7 +448,8 @@ function negotiate(chat: Chat, listing: Listing, offerCents: number, quickPickup
     setChat(chat.id, {
       counter_cents: result.priceCents,
       round: result.round,
-      best_offer_cents: Math.max(chat.best_offer_cents ?? 0, offerCents),
+      // An offer above our price (likely a typo) doesn't become their "best offer".
+      best_offer_cents: result.kind === "overpay" ? chat.best_offer_cents : Math.max(chat.best_offer_cents ?? 0, offerCents),
       ...(conceded ? { last_concession_cents: result.concessionCents } : {}),
       ...(pickupBonus ? { pickup_bonus_used: 1 } : {}),
       ...(result.kind === "split" ? { final_offer_made: 1 } : {}),
@@ -509,7 +514,7 @@ export async function handleBuyerMessage(chatId: string, rawText: string) {
       reading.intent === "accept" || reading.offer_dollars === null
         ? chat.counter_cents
         : Math.round(reading.offer_dollars * 100);
-    const decision = negotiate(chat, listing, offerCents, reading.quick_pickup);
+    const decision = negotiate(chat, listing, offerCents, reading.quick_pickup, reading.intent === "accept");
     const worded = await wordDecision(listing, chat, text, decision, parts.splice(0));
     usage = addUsage(usage, worded.usage);
     parts.push(worded.text);
