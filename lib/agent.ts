@@ -21,6 +21,7 @@ export type Chat = {
   best_offer_cents: number | null; // highest price this buyer has offered
   last_concession_cents: number | null; // how much our previous counter came down
   pickup_bonus_used: number; // 1 once the quick-pickup step has been given
+  final_offer_made: number; // 1 once we've proposed meeting in the middle as our final offer
   agreed_cents: number | null;
   created_at: string;
   updated_at: string;
@@ -219,13 +220,14 @@ function reply(chatId: string, text: string, handledBy: Message["handled_by"], u
 
 // What the pricing code decided for one offer. The AI only words it.
 type Decision = {
-  kind: "agree" | "counter" | "hold" | "remind" | "final" | "lowball" | "explain";
+  kind: "agree" | "counter" | "hold" | "remind" | "gap" | "split" | "final" | "lowball" | "explain";
   priceCents: number;
   offerCents: number;
   bestOfferCents: number | null;
-  repeated: boolean;
   atFloor: boolean;
   pickupBonus: boolean; // this step was traded for a quick pickup
+  pickupOfferCents: number | null; // better price we offer if they pick up soon
+  gapCents: number | null; // how far apart we still are
   previousCents: number; // our price before this offer
 };
 
@@ -237,14 +239,20 @@ function fallbackLine(d: Decision) {
     case "agree":
       return `Deal at ${p}! Tap the PayPal button to hold the payment. You're only charged after you've seen it at pickup.`;
     case "counter":
-      return d.pickupBonus ? `Since you can pick it up soon, I can do ${p}.` : `I can do ${p}.`;
+      if (d.pickupBonus) return `Since you can pick it up soon, I can do ${p}.`;
+      return d.pickupOfferCents
+        ? `I can do ${p}, or ${money(d.pickupOfferCents)} if you can pick it up by tomorrow.`
+        : `I can do ${p}.`;
     case "hold":
       return `I'm at ${p}. Can you come up a little?`;
     case "remind":
       return `You offered ${best} earlier, so I'm staying at ${p}. Come up from ${best} and I'll move too.`;
+    case "gap":
+      return `We're still ${money(d.gapCents!)} apart. Come a bit closer to ${p} and I'll meet you in the middle.`;
+    case "split":
+      return `Let's meet in the middle at ${p}. That's my final offer. Say "deal" and it's yours.`;
     case "final":
-      if (d.atFloor) return d.repeated ? `${p} is the lowest I can go. Just say "deal" if that works for you.` : `${p} is the lowest I can go.`;
-      return d.repeated ? `${p} is my final offer. Just say "deal" if that works for you.` : `${p} is my best price.`;
+      return `${p} is my final offer. Just say "deal" if that works for you.`;
     case "lowball":
       return `Sorry, that's too low. It's ${p}, and it's in good shape.`;
     case "explain":
@@ -262,17 +270,21 @@ function decisionBrief(d: Decision) {
     case "agree":
       return `The deal is agreed at ${p}. Confirm it warmly, and tell the buyer to tap the PayPal button below to hold the payment. They're only charged after they've seen the item at pickup.`;
     case "counter":
-      return d.pickupBonus
-        ? `Counter-offer at ${p}, down from ${money(d.previousCents)}, and make clear this price is because they can pick up soon (the seller needs it gone this week).`
-        : `Counter-offer at ${p}, down from ${money(d.previousCents)}. Use different wording from your earlier messages.`;
+      if (d.pickupBonus)
+        return `Counter-offer at ${p}, down from ${money(d.previousCents)}, and make clear this price is because they can pick up soon (the seller needs it gone this week).`;
+      return d.pickupOfferCents
+        ? `Counter-offer at ${p}, down from ${money(d.previousCents)}. Then propose a trade: ${money(d.pickupOfferCents)} if they can pick it up by tomorrow, since the seller needs it gone this week.`
+        : `Counter-offer at ${p}, down from ${money(d.previousCents)}. Give one short, honest reason from the item facts, worded differently from your earlier messages.`;
     case "hold":
       return `The buyer repeated their offer without moving. Stay at ${p}. If they ask why, point out from the chat that you already came down when they came up, and that you'll move again when they do. Ask them to come up a little.`;
     case "remind":
       return `The buyer went below the ${best} they offered earlier. Point that out kindly, stay at ${p}, and say you'll move again when they come up from ${best}.`;
+    case "gap":
+      return `The buyer came up, but you're still ${money(d.gapCents!)} apart (you're at ${p}). Don't move yet: say that if they come closer, you'll meet them in the middle.`;
+    case "split":
+      return `Propose meeting in the middle at ${p} as your final offer, to wrap this up. Invite them to say "deal".`;
     case "final":
-      return d.atFloor
-        ? `${p} is the lowest the seller will accept. Say so, and invite them to say "deal".`
-        : `${p} is the seller's final offer in this chat. Do NOT call it the lowest possible price. Invite them to say "deal".`;
+      return `You already made your final offer of ${p}. Stand by it kindly, without calling it the lowest possible price, and invite them to say "deal".`;
     case "lowball":
       return `The buyer's offer of ${money(d.offerCents)} is far too low. Decline politely and restate the price of ${p}.`;
     case "explain":
@@ -291,7 +303,7 @@ You are given what the reply must convey. Follow it exactly. You may refer natur
 - Unless told the price is the lowest the seller accepts, never imply it is: no "lowest", "can't go below", "best I can do".
 - Payment is only through a PayPal hold. Never agree to cash or other payment methods.
 - Never promise anything about the item beyond what you are given.
-- Don't start with "Thanks" every time; vary your openings and don't repeat the buyer's name in every message.
+- Only greet ("Hi", "Hey") in your first reply. After that, start directly with the point, varied each time, and don't repeat the buyer's name in every message.
 - Output only the reply text.`;
 
 const DOLLAR = /\$\s?(\d[\d,]*(?:\.\d{1,2})?)/g;
@@ -309,7 +321,7 @@ function wordingIsSafe(text: string, d: Decision, askCents: number, chatText: st
   if (!text || text.length > 300) return false;
   if (/\bthe buyer\b|\bthe seller's assistant\b/i.test(text)) return false; // narration, not a reply
   const said = [...dollarAmounts(chatText), ...[...chatText.matchAll(/\b(\d{2,5})\b/g)].map((m) => Number(m[1]) * 100)];
-  const allowed = new Set([d.priceCents, d.offerCents, d.bestOfferCents, d.previousCents, askCents, ...said].filter(Boolean) as number[]);
+  const allowed = new Set([d.priceCents, d.offerCents, d.bestOfferCents, d.previousCents, d.pickupOfferCents, d.gapCents, askCents, ...said].filter(Boolean) as number[]);
   const amounts = dollarAmounts(text);
   if (!amounts.includes(d.priceCents)) return false;
   if (amounts.some((a) => !allowed.has(a))) return false;
@@ -328,7 +340,12 @@ function limitEmojis(text: string, chatId: string) {
     .filter((m) => m.sender === "agent")
     .slice(-3);
   if (!recentAgent.some((m) => HAS_EMOJI.test(m.text))) return text;
-  return text.replace(EMOJIS, "").trim();
+  return text
+    .replace(/\s*\p{Extended_Pictographic}\uFE0F?\s+(?=[A-Z])/gu, ". ") // emoji ended a sentence
+    .replace(EMOJIS, "")
+    .replace(/([^.!?])$/, "$1.")
+    .replace(/\.\./g, ".")
+    .trim();
 }
 
 // AI writes the sentence around the code's decision; falls back to fixed wording if anything is off.
@@ -392,9 +409,10 @@ function explainDecision(chat: Chat, listing: Listing): Decision {
     priceCents: chat.counter_cents,
     offerCents: chat.best_offer_cents ?? chat.counter_cents,
     bestOfferCents: chat.best_offer_cents,
-    repeated: false,
     atFloor: chat.counter_cents === listing.floor_cents,
     pickupBonus: false,
+    pickupOfferCents: null,
+    gapCents: null,
     previousCents: chat.counter_cents,
   };
 }
@@ -409,6 +427,7 @@ function negotiate(chat: Chat, listing: Listing, offerCents: number, quickPickup
       bestOfferCents: chat.best_offer_cents,
       lastConcessionCents: chat.last_concession_cents,
       pickupBonusUsed: Boolean(chat.pickup_bonus_used),
+      closed: Boolean(chat.final_offer_made),
     },
     offerCents,
     { quickPickup }
@@ -424,6 +443,7 @@ function negotiate(chat: Chat, listing: Listing, offerCents: number, quickPickup
       best_offer_cents: Math.max(chat.best_offer_cents ?? 0, offerCents),
       ...(conceded ? { last_concession_cents: result.concessionCents } : {}),
       ...(pickupBonus ? { pickup_bonus_used: 1 } : {}),
+      ...(result.kind === "split" ? { final_offer_made: 1 } : {}),
     });
   }
   return {
@@ -431,9 +451,10 @@ function negotiate(chat: Chat, listing: Listing, offerCents: number, quickPickup
     priceCents: result.priceCents,
     offerCents,
     bestOfferCents: result.kind === "remind" ? result.bestOfferCents : chat.best_offer_cents,
-    repeated: "repeated" in result ? result.repeated : false,
     atFloor: result.priceCents === listing.floor_cents,
     pickupBonus,
+    pickupOfferCents: result.kind === "counter" ? result.pickupOfferCents : null,
+    gapCents: result.kind === "gap" ? result.gapCents : null,
     previousCents: chat.counter_cents,
   };
 }
@@ -477,7 +498,9 @@ export async function handleBuyerMessage(chatId: string, rawText: string) {
   if (reading.answer) parts.push(reading.answer);
   if (reading.needs_seller) parts.push(`Good question. I'll check with ${listing.seller_name} and reply here.`);
 
-  if (chat.status === "open" && (reading.intent === "offer" || reading.intent === "accept")) {
+  // "Yes, I can grab it tomorrow" after a pickup offer counts as accepting our price with the pickup trade.
+  const acceptsPickup = reading.quick_pickup && reading.offer_dollars === null && chat.best_offer_cents !== null;
+  if (chat.status === "open" && (reading.intent === "offer" || reading.intent === "accept" || acceptsPickup)) {
     const offerCents =
       reading.intent === "accept" || reading.offer_dollars === null
         ? chat.counter_cents
