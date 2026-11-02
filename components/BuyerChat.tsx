@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { money } from "@/lib/format";
+import { PICKER_EMOJIS } from "@/lib/reactions";
+import { ChatBubbles, type ChatMessage } from "./ChatBubbles";
 import { PayPalHoldButton } from "./PayPalHoldButton";
 
 type ChatView = {
@@ -10,7 +12,7 @@ type ChatView = {
   buyerName: string;
   status: "open" | "agreed" | "reserved" | "closed";
   agreedCents: number | null;
-  messages: { id: number; sender: "buyer" | "agent"; text: string }[];
+  messages: ChatMessage[];
 };
 
 type Props = {
@@ -42,7 +44,32 @@ export function BuyerChat({ listingId, sellerName, askCents, listingStatus, payp
   const [sending, setSending] = useState(false);
   const [holding, setHolding] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const bottom = useRef<HTMLDivElement>(null);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Close the emoji picker on an outside tap.
+  useEffect(() => {
+    if (!emojiOpen) return;
+    const close = () => setEmojiOpen(false);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, [emojiOpen]);
+
+  async function react(messageId: number, emoji: string) {
+    if (!chat) return;
+    // Show it immediately; the server's copy replaces it.
+    setChat({
+      ...chat,
+      messages: chat.messages.map((m) =>
+        m.id === messageId ? { ...m, reaction: m.reaction === emoji ? null : emoji } : m
+      ),
+    });
+    try {
+      setChat(await call<ChatView>(`/api/chats/${chat.id}/messages/${messageId}/reaction`, "POST", { emoji }));
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
 
   // Resume this device's chat for the listing, if any.
   useEffect(() => {
@@ -69,10 +96,6 @@ export function BuyerChat({ listingId, sellerName, askCents, listingStatus, payp
     return () => clearInterval(t);
   }, [chat?.id, chat?.status]);
 
-  useEffect(() => {
-    bottom.current?.scrollIntoView({ block: "nearest" });
-  }, [chat?.messages.length]);
-
   async function start(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
@@ -96,7 +119,8 @@ export function BuyerChat({ listingId, sellerName, askCents, listingStatus, payp
     setSending(true);
     setError(null);
     // Show the buyer's message right away.
-    setChat({ ...chat, messages: [...chat.messages, { id: -Date.now(), sender: "buyer", text }] });
+    setEmojiOpen(false);
+    setChat({ ...chat, messages: [...chat.messages, { id: -Date.now(), sender: "buyer", text, reaction: null }] });
     try {
       setChat(await call<ChatView>(`/api/chats/${chat.id}/messages`, "POST", { text }));
     } catch (err) {
@@ -148,26 +172,15 @@ export function BuyerChat({ listingId, sellerName, askCents, listingStatus, payp
 
   return (
     <div className="flex flex-col overflow-hidden rounded-xl border border-line bg-white">
-      <div className="border-b border-line px-4 py-3">
-        <p className="font-medium">{sellerName}&apos;s assistant</p>
-        <p className="text-xs text-muted">Replies for {sellerName}. Asks {sellerName} when it doesn&apos;t know.</p>
+      <div className="flex flex-col items-center border-b border-line bg-[#f9f9f9] px-4 py-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-b from-[#a1a1a6] to-[#8e8e93] text-base font-medium text-white">
+          {sellerName[0]}
+        </div>
+        <p className="mt-1 text-sm font-medium">{sellerName}&apos;s assistant</p>
+        <p className="text-[11px] text-muted">Replies for {sellerName} · asks {sellerName} when it doesn&apos;t know</p>
       </div>
 
-      <div className="max-h-[420px] min-h-[240px] space-y-2 overflow-y-auto p-4">
-        {chat.messages.map((m) => (
-          <div key={m.id} className={m.sender === "buyer" ? "flex justify-end" : "flex justify-start"}>
-            <p
-              className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${
-                m.sender === "buyer" ? "bg-brand text-white" : "bg-paper text-ink"
-              }`}
-            >
-              {m.text}
-            </p>
-          </div>
-        ))}
-        {sending && <p className="text-xs text-muted">Typing…</p>}
-        <div ref={bottom} />
-      </div>
+      <ChatBubbles messages={chat.messages} typing={sending} onReact={react} />
 
       {error && <p className="mx-4 mb-2 rounded-lg bg-red-50 p-2 text-sm text-red-700">{error}</p>}
 
@@ -208,19 +221,54 @@ export function BuyerChat({ listingId, sellerName, askCents, listingStatus, payp
       )}
 
       {(chat.status === "open" || chat.status === "agreed") && (
-        <form onSubmit={send} className="flex gap-2 border-t border-line p-3">
+        <form onSubmit={send} className="relative flex items-center gap-2 border-t border-line p-3">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setEmojiOpen((o) => !o);
+            }}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xl transition-transform hover:scale-110"
+            aria-label="Add an emoji"
+          >
+            😊
+          </button>
+          {emojiOpen && (
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="animate-pop absolute bottom-14 left-3 z-30 grid grid-cols-6 gap-1 rounded-2xl bg-white p-2 shadow-lg ring-1 ring-black/5"
+            >
+              {PICKER_EMOJIS.map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  onClick={() => {
+                    setDraft((d) => d + emoji);
+                    inputRef.current?.focus();
+                  }}
+                  className="h-9 w-9 rounded-lg text-xl transition-transform hover:scale-125"
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          )}
           <input
+            ref={inputRef}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            placeholder="Ask a question or make an offer…"
+            placeholder="Message"
             maxLength={500}
-            className="flex-1 rounded-lg border border-line px-3 py-2 text-sm outline-none focus:border-brand"
+            className="flex-1 rounded-full border border-[#d1d1d6] px-4 py-2 text-[15px] outline-none focus:border-[#0a7cff]"
           />
           <button
             disabled={!draft.trim() || sending}
-            className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+            aria-label="Send"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#0a7cff] text-white transition-all disabled:scale-90 disabled:opacity-30"
           >
-            Send
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M12 19V5M5 12l7-7 7 7" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
           </button>
         </form>
       )}

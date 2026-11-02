@@ -6,6 +6,7 @@ import { db } from "./db";
 import { DealError, getListing, type Listing } from "./deals";
 import { money } from "./format";
 import { respondToOffer } from "./negotiate";
+import { REACTIONS } from "./reactions";
 
 // Cheapest current model: it only reads one buyer message and fills a small JSON form.
 const MODEL = process.env.AGENT_MODEL ?? "claude-haiku-5-5";
@@ -33,8 +34,19 @@ export type Message = {
   handled_by: "rules" | "ai" | "seller" | null;
   input_tokens: number;
   output_tokens: number;
+  reaction: string | null;
   created_at: string;
 };
+
+// Buyer reacts to a message with an emoji (tapping the same one again removes it).
+export function reactToMessage(chatId: string, messageId: number, emoji: string) {
+  if (!REACTIONS.includes(emoji)) throw new DealError("Unsupported reaction.");
+  const m = db().prepare("SELECT * FROM messages WHERE id = ? AND chat_id = ?").get(messageId, chatId) as Message | undefined;
+  if (!m) throw new DealError("Message not found.", 404);
+  db()
+    .prepare("UPDATE messages SET reaction = ? WHERE id = ?")
+    .run(m.reaction === emoji ? null : emoji, messageId);
+}
 
 export type SellerQuestion = {
   id: number;
@@ -78,7 +90,7 @@ export function publicChat(chat: Chat) {
     buyerName: chat.buyer_name,
     status: chat.status,
     agreedCents: chat.agreed_cents,
-    messages: chatMessages(chat.id).map((m) => ({ id: m.id, sender: m.sender, text: m.text })),
+    messages: chatMessages(chat.id).map((m) => ({ id: m.id, sender: m.sender, text: m.text, reaction: m.reaction })),
   };
 }
 
@@ -276,7 +288,7 @@ function decisionBrief(d: Decision) {
   }
 }
 
-const WRITER_INSTRUCTIONS = `You write one short chat reply (1-2 sentences, under 40 words) for a person selling a used item. You speak as the seller's assistant: friendly, plain, no emojis, no exclamation-mark spam.
+const WRITER_INSTRUCTIONS = `You write one short chat reply (1-2 sentences, under 40 words) for a person selling a used item. You speak as the seller's assistant: friendly and plain, like a text message. You may add one fitting emoji now and then (e.g. 🙂 👍 🛋️ 🤝), but not in every message. No exclamation-mark spam.
 
 You are given what the reply must convey. Follow it exactly. You may refer naturally to something the buyer said (like their pickup timing), but:
 - Only mention the dollar amounts you are given or that already appear in the chat. Never invent, round or change a price. Always write prices with a $ sign.

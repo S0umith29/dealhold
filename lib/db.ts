@@ -79,6 +79,7 @@ const MIGRATIONS = [
   "ALTER TABLE chats ADD COLUMN best_offer_cents INTEGER",
   "ALTER TABLE chats ADD COLUMN last_concession_cents INTEGER",
   "ALTER TABLE chats ADD COLUMN pickup_bonus_used INTEGER NOT NULL DEFAULT 0",
+  "ALTER TABLE messages ADD COLUMN reaction TEXT", // buyer's emoji reaction on a message
 ];
 
 function seed(d: DatabaseSync) {

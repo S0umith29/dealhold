@@ -14,3 +14,112 @@ body {
   background: var(--color-paper);
   color: var(--color-ink);
 }
+
+/* ---------- Chat bubbles (message-app style) ---------- */
+
+.bubble {
+  position: relative;
+  max-width: 78%;
+  padding: 7px 12px;
+  border-radius: 18px;
+  font-size: 15px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.bubble-me {
+  background: linear-gradient(180deg, #2b9bff 0%, #0a7cff 100%);
+  color: white;
+}
+.bubble-them {
+  background: #e9e9eb;
+  color: #111;
+}
+/* Tail on the last bubble of a group. */
+.bubble-tail.bubble-me::before,
+.bubble-tail.bubble-them::before {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  width: 20px;
+  height: 20px;
+}
+.bubble-tail.bubble-me::before {
+  right: -7px;
+  background: #0a7cff;
+  border-bottom-left-radius: 16px 14px;
+}
+.bubble-tail.bubble-them::before {
+  left: -7px;
+  background: #e9e9eb;
+  border-bottom-right-radius: 16px 14px;
+}
+.bubble-tail::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  width: 26px;
+  height: 20px;
+  background: white;
+}
+.bubble-tail.bubble-me::after {
+  right: -26px;
+  border-bottom-left-radius: 10px;
+}
+.bubble-tail.bubble-them::after {
+  left: -26px;
+  border-bottom-right-radius: 10px;
+}
+
+/* New messages pop in with a slight spring; no sound. */
+@keyframes bubble-in-me {
+  0% { opacity: 0; transform: translate(10px, 14px) scale(0.6); }
+  70% { opacity: 1; transform: translate(0, -2px) scale(1.03); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+@keyframes bubble-in-them {
+  0% { opacity: 0; transform: translate(-10px, 14px) scale(0.6); }
+  70% { opacity: 1; transform: translate(0, -2px) scale(1.03); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+.animate-in-me {
+  transform-origin: bottom right;
+  animation: bubble-in-me 340ms cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+.animate-in-them {
+  transform-origin: bottom left;
+  animation: bubble-in-them 340ms cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+
+/* Typing indicator: three dots that rise in turn. */
+@keyframes typing-dot {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.45; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+.typing-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+  background: #8e8e93;
+  animation: typing-dot 1.2s infinite ease-in-out;
+}
+.typing-dot:nth-child(2) { animation-delay: 0.15s; }
+.typing-dot:nth-child(3) { animation-delay: 0.3s; }
+
+/* Reaction badge and picker pop. */
+@keyframes pop {
+  0% { opacity: 0; transform: scale(0.4); }
+  70% { opacity: 1; transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+.animate-pop {
+  animation: pop 260ms cubic-bezier(0.2, 0.9, 0.3, 1.3) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-in-me,
+  .animate-in-them,
+  .animate-pop,
+  .typing-dot {
+    animation: none;
+  }
+}
