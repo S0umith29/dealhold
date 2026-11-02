@@ -338,6 +338,8 @@ function wordingIsSafe(text: string, d: Decision, askCents: number, chatText: st
   if (!amounts.includes(d.priceCents)) return false;
   if (amounts.some((a) => !allowed.has(a))) return false;
   if (!d.atFloor && LOWEST_WORDS.test(text)) return false;
+  // "My best" sounds final: only allowed when it really is our final offer.
+  if (d.kind !== "final" && d.kind !== "split" && /\bmy best\b/i.test(text)) return false;
   if (OTHER_PAYMENT.test(text)) return false;
   if (d.kind === "agree" && !/paypal/i.test(text)) return false;
   return true;
@@ -576,4 +578,50 @@ export function agentStats() {
     input_tokens: number;
     output_tokens: number;
   };
+}
+
+// One row per buyer chat for the seller's live activity grid.
+export function sellerActivity() {
+  const deals = db().prepare("SELECT chat_id, status FROM deals WHERE chat_id IS NOT NULL").all() as {
+    chat_id: string;
+    status: string;
+  }[];
+  const dealStatus = new Map(deals.map((d) => [d.chat_id, d.status]));
+  const pending = new Set(
+    (db().prepare("SELECT chat_id FROM seller_questions WHERE answer IS NULL").all() as { chat_id: string }[]).map(
+      (q) => q.chat_id
+    )
+  );
+  return listChats().map((c) => {
+    const messages = chatMessages(c.id);
+    const last = messages.at(-1);
+    const deal = dealStatus.get(c.id);
+    const stage = pending.has(c.id)
+      ? "Needs you"
+      : deal === "held"
+        ? "Money held"
+        : deal === "approved"
+          ? "Pickup set"
+          : deal === "completed"
+            ? "Sold"
+            : c.status === "agreed"
+              ? "Agreed"
+              : c.status === "closed"
+                ? "Closed"
+                : "Talking";
+    const priceCents = c.agreed_cents ?? c.counter_cents;
+    return {
+      id: c.id,
+      buyer: c.buyer_name,
+      stage,
+      bestOfferCents: c.best_offer_cents,
+      priceCents,
+      gapCents: c.status === "open" && c.best_offer_cents ? priceCents - c.best_offer_cents : null,
+      messages: messages.filter((m) => m.sender === "buyer").length,
+      aiCalls: messages.filter((m) => m.handled_by === "ai").length,
+      lastMessage: last ? `${last.sender === "buyer" ? c.buyer_name : "Assistant"}: ${last.text}` : "",
+      updatedAt: c.updated_at,
+      transcript: messages,
+    };
+  });
 }

@@ -1,7 +1,7 @@
 import { connection } from "next/server";
 import { getListing, listDeals, listListings, publicDeal } from "@/lib/deals";
-import { agentStats, chatMessages, getChat, listChats, openQuestions } from "@/lib/agent";
-import { ChatTranscript } from "@/components/ChatTranscript";
+import { agentStats, getChat, openQuestions, sellerActivity } from "@/lib/agent";
+import { BuyerActivity } from "@/components/BuyerActivity";
 import { money } from "@/lib/format";
 import { SellerDealCard } from "@/components/SellerDealCard";
 import { CopyLink } from "@/components/CopyLink";
@@ -13,7 +13,6 @@ export default async function SellerPage() {
   const deals = listDeals();
   const listings = listListings();
   const questions = openQuestions();
-  const chats = listChats();
   const stats = agentStats();
   const open = deals.filter((d) => ["held", "approved", "locked"].includes(d.status));
   const past = deals.filter((d) => !open.includes(d));
@@ -34,43 +33,12 @@ export default async function SellerPage() {
       </section>
 
       <section className="space-y-2">
-        <h2 className="text-sm font-medium uppercase tracking-wide text-muted">Your assistant</h2>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {[
-            ["Buyers", chats.length],
-            ["Buyer messages", stats.buyer_messages ?? 0],
-            ["Handled without AI", stats.by_rules ?? 0],
-            ["AI calls", stats.ai_calls ?? 0],
-          ].map(([label, value]) => (
-            <div key={label} className="rounded-xl border border-line bg-white p-3">
-              <p className="text-2xl font-semibold">{value}</p>
-              <p className="text-xs text-muted">{label}</p>
-            </div>
-          ))}
-        </div>
-        {chats.length > 0 && (
-          <div className="divide-y divide-line rounded-xl border border-line bg-white text-sm">
-            {chats.map((c) => (
-              // Maya can open any buyer's chat to see exactly what her assistant said for her.
-              <details key={c.id} className="group">
-                <summary className="flex cursor-pointer list-none justify-between p-3 hover:bg-paper">
-                  <span>
-                    <span className="mr-2 inline-block text-muted transition-transform group-open:rotate-90">›</span>
-                    {c.buyer_name}
-                  </span>
-                  <span className="text-muted">
-                    {c.status === "agreed" && c.agreed_cents
-                      ? `agreed ${money(c.agreed_cents)}, waiting for hold`
-                      : c.status === "open"
-                        ? `talking · offered ${money(c.counter_cents)}`
-                        : c.status}
-                  </span>
-                </summary>
-                <ChatTranscript messages={chatMessages(c.id)} buyerName={c.buyer_name} />
-              </details>
-            ))}
-          </div>
-        )}
+        <h2 className="text-sm font-medium uppercase tracking-wide text-muted">Buyers · live</h2>
+        {/* SQLite rows are null-prototype objects; send plain copies to the client component. */}
+        <BuyerActivity
+          initialRows={JSON.parse(JSON.stringify(sellerActivity()))}
+          initialStats={JSON.parse(JSON.stringify(stats))}
+        />
       </section>
 
       <section className="space-y-2">
