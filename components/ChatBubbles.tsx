@@ -39,7 +39,7 @@ export function ChatBubbles({ messages, typing, onReact }: Props) {
   }, [pickerFor]);
 
   return (
-    <div className="max-h-[440px] min-h-[260px] overflow-x-hidden overflow-y-auto bg-white px-4 pt-6 pb-3">
+    <div className="max-h-[420px] min-h-[240px] overflow-x-hidden overflow-y-auto bg-white px-4 pt-5 pb-3">
       {messages.map((m, i) => {
         const me = m.sender === "buyer";
         const next = messages[i + 1];
@@ -75,7 +75,7 @@ export function ChatBubbles({ messages, typing, onReact }: Props) {
                 <span
                   key={m.reaction}
                   className={`animate-pop absolute -top-4 z-20 flex h-7 min-w-7 items-center justify-center rounded-full border-2 border-white px-1 text-sm shadow-sm ${
-                    me ? "-left-3 bg-[#e9e9eb]" : "-right-3 bg-[#0a7cff]"
+                    me ? "-left-3 bg-paper" : "-right-3 bg-brand-soft"
                   }`}
                 >
                   {m.reaction}
@@ -97,7 +97,7 @@ export function ChatBubbles({ messages, typing, onReact }: Props) {
                         setPickerFor(null);
                       }}
                       className={`h-8 w-8 rounded-full text-lg transition-transform hover:scale-125 ${
-                        m.reaction === emoji ? "bg-[#0a7cff]/15" : ""
+                        m.reaction === emoji ? "bg-brand-soft" : ""
                       }`}
                       aria-label={`React ${emoji}`}
                     >
@@ -122,7 +122,7 @@ export function ChatBubbles({ messages, typing, onReact }: Props) {
       )}
 
       {messages.length > 1 && (
-        <p className="mt-1 text-center text-[11px] text-[#8e8e93]">Double-click or right-click a message to react</p>
+        <p className="mt-1 text-center text-[11px] text-muted">Double-click or right-click a message to react</p>
       )}
       <div ref={bottom} />
     </div>

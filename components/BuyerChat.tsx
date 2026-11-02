@@ -172,12 +172,9 @@ export function BuyerChat({ listingId, sellerName, askCents, listingStatus, payp
 
   return (
     <div className="flex flex-col overflow-hidden rounded-xl border border-line bg-white">
-      <div className="flex flex-col items-center border-b border-line bg-[#f9f9f9] px-4 py-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-b from-[#a1a1a6] to-[#8e8e93] text-base font-medium text-white">
-          {sellerName[0]}
-        </div>
-        <p className="mt-1 text-sm font-medium">{sellerName}&apos;s assistant</p>
-        <p className="text-[11px] text-muted">Replies for {sellerName} · asks {sellerName} when it doesn&apos;t know</p>
+      <div className="border-b border-line px-4 py-3">
+        <p className="font-medium">{sellerName}&apos;s assistant</p>
+        <p className="text-xs text-muted">Replies for {sellerName}. Asks {sellerName} when it doesn&apos;t know.</p>
       </div>
 
       <ChatBubbles messages={chat.messages} typing={sending} onReact={react} />
@@ -228,7 +225,7 @@ export function BuyerChat({ listingId, sellerName, askCents, listingStatus, payp
               e.stopPropagation();
               setEmojiOpen((o) => !o);
             }}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xl transition-transform hover:scale-110"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-lg transition-transform hover:scale-110"
             aria-label="Add an emoji"
           >
             😊
@@ -257,18 +254,15 @@ export function BuyerChat({ listingId, sellerName, askCents, listingStatus, payp
             ref={inputRef}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            placeholder="Message"
+            placeholder="Ask a question or make an offer…"
             maxLength={500}
-            className="flex-1 rounded-full border border-[#d1d1d6] px-4 py-2 text-[15px] outline-none focus:border-[#0a7cff]"
+            className="flex-1 rounded-lg border border-line px-3 py-2 text-sm outline-none focus:border-brand"
           />
           <button
             disabled={!draft.trim() || sending}
-            aria-label="Send"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#0a7cff] text-white transition-all disabled:scale-90 disabled:opacity-30"
+            className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
           >
-            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M12 19V5M5 12l7-7 7 7" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+            Send
           </button>
         </form>
       )}
