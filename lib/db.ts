@@ -85,6 +85,12 @@ const MIGRATIONS = [
   "ALTER TABLE listings ADD COLUMN new_price_cents INTEGER", // today's new price, from Channel3
   "ALTER TABLE listings ADD COLUMN product_url TEXT", // the new product the seller matched
   "ALTER TABLE listings ADD COLUMN created_at TEXT",
+  // The seller's browsers that asked for push notifications.
+  `CREATE TABLE IF NOT EXISTS push_subscriptions (
+     endpoint TEXT PRIMARY KEY,
+     subscription TEXT NOT NULL,
+     created_at TEXT NOT NULL DEFAULT (datetime('now'))
+   )`,
 ];
 
 function seed(d: DatabaseSync) {

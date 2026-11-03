@@ -5,6 +5,7 @@ import { z } from "zod";
 import { db } from "./db";
 import { DealError, getListing, type Listing } from "./deals";
 import { money } from "./format";
+import { notifySeller } from "./notify";
 import { respondToOffer } from "./negotiate";
 import { REACTIONS } from "./reactions";
 
@@ -521,6 +522,7 @@ export async function handleBuyerMessage(chatId: string, rawText: string) {
     db()
       .prepare("INSERT INTO seller_questions (listing_id, chat_id, question) VALUES (?, ?, ?)")
       .run(listing.id, chatId, reading.seller_question);
+    notifySeller({ title: `${chat.buyer_name} asked: ${reading.seller_question}`, body: "Answer once and your assistant reuses it for every buyer." });
   }
 
   const parts: string[] = [];

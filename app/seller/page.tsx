@@ -2,6 +2,7 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { demoMode, expireStaleHolds, getListing, listDeals, listListings, publicDeal } from "@/lib/deals";
 import { ResetDemoButton } from "@/components/ResetDemoButton";
+import { NotificationsButton } from "@/components/NotificationsButton";
 import { agentStats, getChat, openQuestions, sellerActivity } from "@/lib/agent";
 import { BuyerActivity } from "@/components/BuyerActivity";
 import { money } from "@/lib/format";
@@ -26,7 +27,10 @@ export default async function SellerPage() {
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-semibold tracking-tight">Hi Maya</h1>
-          {demoMode() && <ResetDemoButton />}
+          <div className="flex items-center gap-2">
+            <NotificationsButton publicKey={process.env.VAPID_PUBLIC_KEY ?? ""} />
+            {demoMode() && <ResetDemoButton />}
+          </div>
         </div>
         {open.length === 0 && questions.length === 0 && (
           <p className="text-muted">Nothing needs you right now. Your assistant is handling buyers.</p>
@@ -57,7 +61,7 @@ export default async function SellerPage() {
         </div>
         {listings.map((l) => (
           <div key={l.id} className="space-y-2 rounded-xl border border-line bg-white p-4">
-            <div className="flex justify-between">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3">
               <span className="font-medium">{l.title}</span>
               <span className="text-sm text-muted">
                 {money(l.ask_cents)} ask · {money(l.floor_cents)} floor · {l.status}

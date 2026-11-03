@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AgGridReact } from "ag-grid-react";
 import {
   AllCommunityModule,
@@ -86,6 +87,8 @@ export function BuyerActivity({ initialRows, initialStats }: { initialRows: Row[
   const [rows, setRows] = useState(initialRows);
   const [stats, setStats] = useState(initialStats);
   const [selected, setSelected] = useState<string | null>(null);
+  const router = useRouter();
+  const lastStages = useRef<string | null>(null);
 
   // Live: refresh every 3 seconds; changed cells flash.
   useEffect(() => {
@@ -95,6 +98,10 @@ export function BuyerActivity({ initialRows, initialStats }: { initialRows: Row[
       const data = (await res.json()) as { rows: Row[]; stats: Stats };
       setRows(data.rows);
       setStats(data.stats);
+      // A deal or question appeared or changed: refresh the cards above the grid too.
+      const stages = data.rows.map((r) => `${r.id}:${r.stage}`).join("|");
+      if (lastStages.current !== null && stages !== lastStages.current) router.refresh();
+      lastStages.current = stages;
     }, 3000);
     return () => clearInterval(t);
   }, []);

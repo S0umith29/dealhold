@@ -1,5 +1,7 @@
 import crypto from "node:crypto";
 import { db } from "./db";
+import { money } from "./format";
+import { notifySeller } from "./notify";
 import { authorizeOrder, captureHold, createHoldOrder, getOrder, payoutToSeller, voidHold } from "./paypal";
 
 export type Listing = {
@@ -171,6 +173,10 @@ export async function openDealFromOrder(orderId: string) {
   ).run(id, listing.id, chat.id, chat.buyer_name, auth.amountCents, orderId, auth.authId, hashCode(id, code), auth.expiresAt);
   setListingStatus(listing.id, "reserved");
   setChatStatus(chat.id, "reserved");
+  notifySeller({
+    title: `${chat.buyer_name}: ${money(auth.amountCents)} held`,
+    body: `${listing.title}. PayPal is holding the money. Tap to approve.`,
+  });
   return { dealId: id, code };
 }
 
@@ -193,6 +199,10 @@ export async function cancelDeal(id: string, reason: string) {
   setDeal(id, { status: "cancelled", cancel_reason: reason });
   setListingStatus(deal.listing_id, "active");
   setChatStatus(deal.chat_id, "closed");
+  // The seller already knows when they declined; tell them about everything else.
+  if (!reason.startsWith("Declined by the seller")) {
+    notifySeller({ title: `${deal.buyer_name}'s deal was cancelled`, body: `${reason}. The item is back on sale.` });
+  }
 }
 
 // Seller types the buyer's code: capture the hold, then pay the seller.

@@ -4,6 +4,7 @@ import { getListing, publicListing } from "@/lib/deals";
 import { money } from "@/lib/format";
 import { SofaArt } from "@/components/SofaArt";
 import { BuyerChat } from "@/components/BuyerChat";
+import { ChatJumpBar } from "@/components/ChatJumpBar";
 
 export default async function ListingPage({ params }: PageProps<"/l/[id]">) {
   await connection();
@@ -13,7 +14,7 @@ export default async function ListingPage({ params }: PageProps<"/l/[id]">) {
   const listing = publicListing(row);
 
   return (
-    <div className="grid gap-6 md:grid-cols-[1fr_360px]">
+    <div className="grid gap-6 pb-24 md:grid-cols-[1fr_360px] md:pb-0">
       <article className="space-y-4">
         <div className="aspect-[16/9] overflow-hidden rounded-xl border border-line bg-paper">
           {listing.photos.length > 0 ? (
@@ -51,7 +52,7 @@ export default async function ListingPage({ params }: PageProps<"/l/[id]">) {
         </ul>
       </article>
 
-      <aside>
+      <aside id="chat" className="scroll-mt-4">
         <BuyerChat
           listingId={listing.id}
           sellerName={listing.sellerName}
@@ -60,6 +61,11 @@ export default async function ListingPage({ params }: PageProps<"/l/[id]">) {
           paypalClientId={process.env.PAYPAL_CLIENT_ID ?? ""}
         />
       </aside>
+
+      {/* Phones: the chat sits below the details, so keep a way to it on screen. */}
+      {listing.status === "active" && (
+        <ChatJumpBar label={`💬 Chat with ${listing.sellerName}'s assistant · ${money(listing.askCents)}`} />
+      )}
     </div>
   );
 }
