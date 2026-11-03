@@ -51,9 +51,9 @@ Model: **Claude Haiku 5.5** (`AGENT_MODEL` to change). Typical cost: about $0.00
 
 **Negotiation (`lib/negotiate.ts`)** follows a short, human arc instead of trading $5 steps: an opening counter, a second move that offers a better price for a quick pickup, then a meet-in-the-middle final offer. It never moves when the buyer doesn't, never rewards going below the buyer's own earlier offer, confirms offers above the price instead of taking them, and never goes below the seller's floor. The AI never sees the floor.
 
-## Agent-to-agent buying (MCP)
+## Bonus: a buyer's own AI can do the haggling (MCP)
 
-Buyers increasingly shop through their own AI assistants. DealHold exposes a small **MCP server** at `/api/mcp` (Streamable HTTP), so a buyer's Claude, ChatGPT or any MCP client can do the haggling for them:
+Optional, and not needed for the main flow. Some buyers will shop through their own AI assistants, so DealHold also exposes a small **MCP server** at `/api/mcp` (Streamable HTTP), so a buyer's Claude, ChatGPT or any MCP client can do the haggling for them:
 
 | Tool | What it does |
 |---|---|
