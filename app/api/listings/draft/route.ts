@@ -1,9 +1,21 @@
 import { NextResponse } from "next/server";
 import { draftListing, findNewPrices, savePhotos, validatePhotos } from "@/lib/listing-ai";
 import { handle } from "@/lib/http";
+import { limit, LIMITS, visitor } from "@/lib/limits";
 
 // Seller uploads photos and a note: the AI writes the listing and Channel3 finds it new today.
 export async function POST(req: Request) {
+  try {
+    limit(
+      [
+        [`draft:${visitor(req)}`, LIMITS.draftPerVisitor],
+        ["draft-all", LIMITS.draftEveryone],
+      ],
+      "Too many listings drafted for now. Try again later."
+    );
+  } catch (err) {
+    return NextResponse.json({ error: (err as Error).message }, { status: 429 });
+  }
   const form = await req.formData();
   let files: File[];
   try {

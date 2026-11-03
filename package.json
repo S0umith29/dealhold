@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "test": "node --test tests/*.test.ts",
     "hold-test": "node scripts/hold-test.js",
     "reset-demo": "node scripts/reset-demo.js"
   },

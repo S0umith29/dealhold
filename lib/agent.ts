@@ -7,6 +7,8 @@ import { DealError, getListing, type Listing } from "./deals";
 import { money } from "./format";
 import { notifySeller } from "./notify";
 import { respondToOffer } from "./negotiate";
+import { claimNote } from "./price-check";
+import { wordingIsSafe, type Decision } from "./wording";
 import { REACTIONS } from "./reactions";
 
 // Cheapest current model: it only reads one buyer message and fills a small JSON form.
@@ -128,7 +130,7 @@ export function startChat(listingId: string, buyerName: string) {
   addMessage(
     id,
     "agent",
-    `Hi ${buyerName}! I'm ${listing.seller_name}'s assistant. Ask me anything about the ${listing.title.toLowerCase()}, or make an offer.`
+    `Hi ${buyerName.replace(/\s*\(simulated\)$/, "")}! I'm ${listing.seller_name}'s assistant. Ask me anything about the ${listing.title.toLowerCase()}, or make an offer.`
   );
   return id;
 }
@@ -143,6 +145,7 @@ const Reading = z.object({
   seller_question: z.string().nullable(),
   asks_price: z.boolean(),
   quick_pickup: z.boolean(),
+  claimed_new_price_dollars: z.number().nullable(),
   reply: z.string(),
 });
 type Reading = z.infer<typeof Reading>;
@@ -151,13 +154,14 @@ const INSTRUCTIONS = `You help a person sell a used item. You read ONE message f
 
 Fields:
 - intent: "offer" if the buyer proposes a price; "accept" if they agree to the seller's current price without naming a new one; "question" if they ask about the item, pickup or payment; "other" for anything else.
-- offer_dollars: the price the buyer proposes, as a number of US dollars, or null.
-- answer: if the buyer asks something, answer it using ONLY the item facts and the seller's earlier answers below. If those don't contain the answer, set answer to null. Never guess or invent details.
+- offer_dollars: the price the buyer proposes to pay for THIS item, as a number of US dollars, or null. A price they say they can get elsewhere or new ("I can get one new for $120") is not an offer: put it in claimed_new_price_dollars instead.
+- answer: if the buyer asks something, answer it (to them, as "you") using ONLY the item facts and the seller's earlier answers below. If those don't contain the answer, set answer to null. Never guess or invent details.
 - needs_seller: true only if the buyer asked something about the item that the facts and earlier answers don't cover.
 - seller_question: when needs_seller is true, the question rewritten briefly for the seller (e.g. "Does it recline?"). Otherwise null.
 - quick_pickup: true if the buyer offers to pick up today, tomorrow, or "right now/ASAP".
+- claimed_new_price_dollars: if the buyer says they can buy this item new, or elsewhere, for a price, that price as a number of US dollars. Otherwise null.
 - asks_price: true if the buyer asks about the price, the lowest price, or whether the price is negotiable, without proposing a number.
-- reply: one or two short, plain sentences (direct, no thanking or flattery) to send the buyer for intent "question" or "other". Include the answer when you have one. Don't discuss price: the pricing system handles that. For "offer" and "accept", reply with an empty string.
+- reply: one or two short, plain sentences (direct, no thanking or flattery) to send the buyer for intent "question" or "other", speaking to them as "you" (never "the buyer"). Include the answer when you have one. Don't discuss price: the pricing system handles that. For "offer" and "accept", reply with an empty string.
 
 How payment works (you may explain this): the buyer reserves with a PayPal hold. They are only charged after they check the item at pickup and give the seller their 4-digit code. If anything is wrong, they cancel and the hold is released.
 
@@ -219,19 +223,6 @@ function reply(chatId: string, text: string, handledBy: Message["handled_by"], u
   addMessage(chatId, "agent", text, handledBy, usage);
 }
 
-// What the pricing code decided for one offer. The AI only words it.
-type Decision = {
-  kind: "agree" | "counter" | "hold" | "remind" | "gap" | "split" | "final" | "lowball" | "overpay" | "explain";
-  priceCents: number;
-  offerCents: number;
-  bestOfferCents: number | null;
-  atFloor: boolean;
-  pickupBonus: boolean; // this step was traded for a quick pickup
-  pickupOfferCents: number | null; // better price we offer if they pick up soon
-  gapCents: number | null; // how far apart we still are
-  previousCents: number; // our price before this offer
-};
-
 // Fixed wording: used if the AI's wording fails the checks below. Never claims "lowest" unless it's the floor.
 function fallbackLine(d: Decision) {
   const p = money(d.priceCents);
@@ -276,10 +267,10 @@ function decisionBrief(d: Decision) {
       return `The deal is agreed at ${p}. Confirm it warmly, and tell the buyer to tap the PayPal button below to hold the payment. They're only charged after they've seen the item at pickup.`;
     case "counter":
       if (d.pickupBonus)
-        return `Counter-offer at ${p}, down from ${money(d.previousCents)}, and make clear this price is because they can pick up soon (the seller needs it gone this week).`;
+        return `Your new price is ${p}, down from ${money(d.previousCents)}. Make clear this price is because they can pick up soon (the seller needs it gone this week).`;
       return d.pickupOfferCents
-        ? `Counter-offer at ${p}, down from ${money(d.previousCents)}. Then propose a trade: ${money(d.pickupOfferCents)} if they can pick it up by tomorrow, since the seller needs it gone this week.`
-        : `Counter-offer at ${p}, down from ${money(d.previousCents)}. Give one short, honest reason from the item facts, worded differently from your earlier messages.`;
+        ? `Your new price is ${p}, down from ${money(d.previousCents)}. Then propose a trade: ${money(d.pickupOfferCents)} if they can pick it up by tomorrow, since the seller needs it gone this week.`
+        : `Your new price is ${p}, down from ${money(d.previousCents)}. Give one short, honest reason from the item facts, worded differently from your earlier messages.`;
     case "hold":
       return `The buyer repeated their offer without moving. Stay at ${p}. If they ask why, point out from the chat that you already came down when they came up, and that you'll move again when they do. Ask them to come up a little.`;
     case "remind":
@@ -317,34 +308,6 @@ You are given what the reply must convey. Follow it exactly. You may refer natur
 - Never promise anything about the item beyond what you are given.
 - Only greet ("Hi", "Hey") in your first reply. After that, start directly with the point, varied each time, and don't repeat the buyer's name in every message.
 - Output only the reply text.`;
-
-const DOLLAR = /\$\s?(\d[\d,]*(?:\.\d{1,2})?)/g;
-// Phrases that claim a price is the seller's minimum. Only true when it's the floor.
-const LOWEST_WORDS =
-  /\b(lowest|bottom|minimum|price floor|rock[- ]bottom|best I can do|can'?t go (any )?(lower|below|under)|won'?t go (any )?(lower|below|under)|as low as I can|as far as I('ll| will| can)? go|(the )?most I can (come down|drop|do|go|lower)|limit|that's it for me)\b/i;
-const OTHER_PAYMENT = /\b(cash|venmo|zelle|cash ?app|check)\b/i;
-
-const dollarAmounts = (text: string) =>
-  [...text.matchAll(DOLLAR)].map((m) => Math.round(Number(m[1].replace(/,/g, "")) * 100));
-
-// Code checks the AI's wording: right price present, no new amounts, no false "lowest" claim.
-// Amounts already said in the chat may be repeated ("you came up from $100", "a new one is $160").
-function wordingIsSafe(text: string, d: Decision, askCents: number, chatText: string) {
-  if (!text || text.length > 300) return false;
-  if (/\b(the )?buyer('s| is| has)?\b|\bthe seller's assistant\b/i.test(text)) return false; // narration, not a reply
-  if (/^(thanks|thank you|i appreciate|appreciate)/i.test(text)) return false; // straight talk, no thanking per raise
-  const said = [...dollarAmounts(chatText), ...[...chatText.matchAll(/\b(\d{2,5})\b/g)].map((m) => Number(m[1]) * 100)];
-  const allowed = new Set([d.priceCents, d.offerCents, d.bestOfferCents, d.previousCents, d.pickupOfferCents, d.gapCents, askCents, ...said].filter(Boolean) as number[]);
-  const amounts = dollarAmounts(text);
-  if (!amounts.includes(d.priceCents)) return false;
-  if (amounts.some((a) => !allowed.has(a))) return false;
-  if (!d.atFloor && LOWEST_WORDS.test(text)) return false;
-  // "My best" sounds final: only allowed when it really is our final offer.
-  if (d.kind !== "final" && d.kind !== "split" && /\bmy best\b/i.test(text)) return false;
-  if (OTHER_PAYMENT.test(text)) return false;
-  if (d.kind === "agree" && !/paypal/i.test(text)) return false;
-  return true;
-}
 
 // The answer is already sent before the price part. If the AI's reply opens by restating it
 // ("No pets here, and I can do $135"), drop that opening clause.
@@ -420,7 +383,7 @@ async function wordDecision(
         .pop() ?? ""
     ).trim();
     const usage = usageOf(response.usage);
-    if (wordingIsSafe(text, d, listing.ask_cents, `${recent}\n${buyerText}`)) {
+    if (wordingIsSafe(text, d, listing.ask_cents, `${recent}\n${buyerText}\n${notes.join(" ")}`)) {
       return { text: prefix + limitEmojis(dropRepeatedLead(text, notes), chat.id), usage };
     }
     console.warn(`Rejected AI wording for ${d.kind} at ${money(d.priceCents)}: ${text}`);
@@ -516,6 +479,11 @@ export async function handleBuyerMessage(chatId: string, rawText: string) {
 
   const read = await readMessage(listing, chat, text);
   const reading = read.reading;
+  // A price seen elsewhere is a claim, not an offer, even if the reading filled both.
+  if (reading.claimed_new_price_dollars !== null && reading.offer_dollars === reading.claimed_new_price_dollars) {
+    reading.offer_dollars = null;
+    if (reading.intent === "offer") reading.intent = "other";
+  }
   let usage = read.usage;
 
   if (reading.needs_seller && reading.seller_question) {
@@ -527,6 +495,11 @@ export async function handleBuyerMessage(chatId: string, rawText: string) {
 
   const parts: string[] = [];
   if (reading.answer) parts.push(reading.answer);
+  // "I can get one new for $120": check it with Channel3 rather than take their word or argue blind.
+  if (reading.claimed_new_price_dollars && chat.status === "open") {
+    const note = await claimNote(listing, Math.round(reading.claimed_new_price_dollars * 100));
+    if (note) parts.push(note);
+  }
   if (reading.needs_seller) parts.push(`Good question. I'll check with ${listing.seller_name} and reply here.`);
 
   // "Yes, I can grab it tomorrow" after a pickup offer counts as accepting our price with the pickup trade.
@@ -608,6 +581,9 @@ export function sellerActivity() {
       (q) => q.chat_id
     )
   );
+  const titles = new Map(
+    (db().prepare("SELECT id, title FROM listings").all() as { id: string; title: string }[]).map((l) => [l.id, l.title])
+  );
   return listChats().map((c) => {
     const messages = chatMessages(c.id);
     const last = messages.at(-1);
@@ -629,6 +605,7 @@ export function sellerActivity() {
     return {
       id: c.id,
       buyer: c.buyer_name,
+      item: titles.get(c.listing_id) ?? "",
       stage,
       bestOfferCents: c.best_offer_cents,
       priceCents,

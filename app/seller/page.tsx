@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { connection } from "next/server";
-import { demoMode, expireStaleHolds, getListing, listDeals, listListings, publicDeal } from "@/lib/deals";
+import { demoMode, expireStaleHolds, salesStats, getListing, listDeals, listListings, publicDeal } from "@/lib/deals";
 import { ResetDemoButton } from "@/components/ResetDemoButton";
 import { NotificationsButton } from "@/components/NotificationsButton";
 import { agentStats, getChat, openQuestions, sellerActivity } from "@/lib/agent";
@@ -9,6 +9,7 @@ import { money } from "@/lib/format";
 import { SellerDealCard } from "@/components/SellerDealCard";
 import { CopyLink } from "@/components/CopyLink";
 import { QuestionCard } from "@/components/QuestionCard";
+import { SimulateButton } from "@/components/SimulateButton";
 
 // Demo has a single seller (Maya), so no login yet.
 export default async function SellerPage() {
@@ -21,6 +22,7 @@ export default async function SellerPage() {
   const stats = agentStats();
   const open = deals.filter((d) => ["held", "approved", "locked"].includes(d.status));
   const past = deals.filter((d) => !open.includes(d));
+  const simListing = listings.find((l) => l.id === "sofa-123" && l.status === "active") ?? listings.find((l) => l.status === "active");
 
   return (
     <div className="space-y-8">
@@ -44,11 +46,15 @@ export default async function SellerPage() {
       </section>
 
       <section className="space-y-2">
-        <h2 className="text-sm font-medium uppercase tracking-wide text-muted">Buyers · live</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-medium uppercase tracking-wide text-muted">Buyers · live</h2>
+          {demoMode() && simListing && <SimulateButton listingId={simListing.id} />}
+        </div>
         {/* SQLite rows are null-prototype objects; send plain copies to the client component. */}
         <BuyerActivity
           initialRows={JSON.parse(JSON.stringify(sellerActivity()))}
           initialStats={JSON.parse(JSON.stringify(stats))}
+          initialSales={JSON.parse(JSON.stringify(salesStats()))}
         />
       </section>
 

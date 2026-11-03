@@ -28,6 +28,11 @@ services:
         sync: false
       - key: CHANNEL3_API_KEY
         sync: false
+      # Sandbox buyer login shown on the home page for judges (sandbox only, no real money)
+      - key: DEMO_BUYER_EMAIL
+        sync: false
+      - key: DEMO_BUYER_PASSWORD
+        sync: false
       - key: CRON_SECRET
         generateValue: true
       # Seller push notifications (copy from your local .env)

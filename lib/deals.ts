@@ -233,6 +233,20 @@ export async function completePickup(id: string, code: string) {
   setListingStatus(listing.id, "sold");
 }
 
+// Money totals for the seller's dashboard.
+export function salesStats() {
+  return db()
+    .prepare(
+      `SELECT
+         COALESCE(SUM(CASE WHEN d.status IN ('held', 'approved', 'locked') THEN d.price_cents END), 0) AS held_cents,
+         COALESCE(SUM(CASE WHEN d.status = 'completed' THEN d.payout_cents END), 0) AS paid_cents,
+         COUNT(CASE WHEN d.status = 'completed' THEN 1 END) AS sold,
+         AVG(CASE WHEN d.status = 'completed' THEN d.price_cents * 1.0 / l.ask_cents END) AS share_of_ask
+       FROM deals d JOIN listings l ON l.id = d.listing_id`
+    )
+    .get() as { held_cents: number; paid_cents: number; sold: number; share_of_ask: number | null };
+}
+
 // Demo has one seller (Maya); a real app would take these from the signed-in seller.
 export function createListing(l: {
   title: string;
