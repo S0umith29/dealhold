@@ -8,7 +8,7 @@ import { money } from "./format";
 import { notifySeller } from "./notify";
 import { respondToOffer } from "./negotiate";
 import { claimNote } from "./price-check";
-import { wordingIsSafe, type Decision } from "./wording";
+import { infoIsSafe, wordingIsSafe, type Decision } from "./wording";
 import { REACTIONS } from "./reactions";
 
 // Cheapest current model: it only reads one buyer message and fills a small JSON form.
@@ -479,6 +479,19 @@ export async function handleBuyerMessage(chatId: string, rawText: string) {
 
   const read = await readMessage(listing, chat, text);
   const reading = read.reading;
+  // The AI's own answer and small talk must not invent prices or other payment methods.
+  const known = `${listingContext(listing)}\n${money(chat.counter_cents)} ${money(listing.ask_cents)}\n${chatMessages(chatId)
+    .filter((m) => m.sender === "agent")
+    .map((m) => m.text)
+    .join("\n")}`;
+  if (reading.answer && !infoIsSafe(reading.answer, known)) {
+    console.warn(`Dropped unsafe answer: ${reading.answer}`);
+    reading.answer = null;
+  }
+  if (reading.reply && !infoIsSafe(reading.reply, known)) {
+    console.warn(`Dropped unsafe reply: ${reading.reply}`);
+    reading.reply = "";
+  }
   // A price seen elsewhere is a claim, not an offer, even if the reading filled both.
   if (reading.claimed_new_price_dollars !== null && reading.offer_dollars === reading.claimed_new_price_dollars) {
     reading.offer_dollars = null;

@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { draftListing, findNewPrices, savePhotos, validatePhotos } from "@/lib/listing-ai";
 import { handle } from "@/lib/http";
+import { isSeller } from "@/lib/seller-auth";
 import { limit, LIMITS, visitor } from "@/lib/limits";
 
 // Seller uploads photos and a note: the AI writes the listing and Channel3 finds it new today.
 export async function POST(req: Request) {
+  if (!(await isSeller())) return NextResponse.json({ error: "Sign in as the seller first." }, { status: 401 });
   try {
     limit(
       [

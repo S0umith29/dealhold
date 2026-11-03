@@ -1,5 +1,6 @@
 import { createListing, DealError } from "@/lib/deals";
 import { handle } from "@/lib/http";
+import { requireSeller } from "@/lib/seller-auth";
 
 type Body = {
   title?: string;
@@ -15,6 +16,7 @@ type Body = {
 // Seller publishes a listing.
 export async function POST(req: Request) {
   return handle(async () => {
+    await requireSeller(req);
     const b = (await req.json().catch(() => ({}))) as Body;
     const title = b.title?.trim().slice(0, 80);
     if (!title) throw new DealError("Add a title.");
@@ -33,8 +35,8 @@ export async function POST(req: Request) {
       photos,
       askCents: ask,
       floorCents: floor,
-      newPriceCents: b.newPriceCents ? Math.round(b.newPriceCents) : null,
-      productUrl: b.productUrl ?? null,
+      newPriceCents: Number(b.newPriceCents) > 0 && Number(b.newPriceCents) < 10_000_000 ? Math.round(Number(b.newPriceCents)) : null,
+      productUrl: typeof b.productUrl === "string" && /^https:\/\/[^\s]{1,500}$/.test(b.productUrl) ? b.productUrl : null,
     });
     return { id };
   });

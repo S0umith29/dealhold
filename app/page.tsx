@@ -72,7 +72,7 @@ export default async function Home() {
               <Link href="/seller" className="font-medium text-brand underline">
                 Open Maya&apos;s dashboard
               </Link>{" "}
-              and press <b>▶ Simulate 5 buyers</b>. Five buyers message at once: a serious buyer, a lowballer, one who asks
+              (password in the submission&apos;s testing instructions) and press <b>▶ Simulate 5 buyers</b>. Five buyers message at once: a serious buyer, a lowballer, one who asks
               something only Maya knows, one who tries to trick the assistant, and one who ghosts. Tap any row to read the
               chat.
             </li>

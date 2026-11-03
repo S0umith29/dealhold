@@ -147,6 +147,8 @@ export function BuyerActivity({
         headerName: "Last message",
         flex: 1,
         minWidth: 140,
+        // Search looks through the whole chat, not just the last message.
+        getQuickFilterText: (p) => p.data?.transcript?.map((m) => m.text).join(" ") ?? "",
         tooltipValueGetter: (p) => `${p.value} (${p.data ? ago(p.data.updatedAt) : ""})`,
       },
     ],

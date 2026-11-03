@@ -1,6 +1,9 @@
+import { redirect } from "next/navigation";
 import { NewListingForm } from "@/components/NewListingForm";
+import { isSeller } from "@/lib/seller-auth";
 
-export default function NewListingPage() {
+export default async function NewListingPage() {
+  if (!(await isSeller())) redirect("/seller/login?next=/seller/new");
   return (
     <div className="mx-auto max-w-xl space-y-4">
       <div>

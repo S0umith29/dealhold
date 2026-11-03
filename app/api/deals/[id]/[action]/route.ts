@@ -1,10 +1,13 @@
 import { approveDeal, cancelDeal, completePickup, DealError } from "@/lib/deals";
 import { handle } from "@/lib/http";
+import { requireSeller } from "@/lib/seller-auth";
 
 // Seller: approve | decline | pickup (with code). Buyer: cancel.
 export async function POST(req: Request, ctx: RouteContext<"/api/deals/[id]/[action]">) {
   return handle(async () => {
     const { id, action } = await ctx.params;
+    // Everything but "cancel" is the seller's. The buyer cancels with the deal id only they were given.
+    if (action !== "cancel") await requireSeller(req);
     switch (action) {
       case "approve":
         return approveDeal(id);

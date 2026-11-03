@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { wordingIsSafe, type Decision } from "../lib/wording.ts";
+import { infoIsSafe, wordingIsSafe, type Decision } from "../lib/wording.ts";
 
 // The AI writes the sentence; these checks decide if a buyer may see it.
 const counter: Decision = {
@@ -57,4 +57,12 @@ test("an agreed deal must point to the PayPal hold", () => {
 test("no narrating about 'the buyer', no thanking for every raise", () => {
   assert.ok(!ok("The buyer is at $90, so I'm at $135."));
   assert.ok(!ok("Thanks for coming up! I can do $135."));
+});
+
+test("answers can't invent prices or other payment methods", () => {
+  const listing = "Item: Grey sofa. Asking $150. Facts: 1 year old.";
+  assert.ok(infoIsSafe("It's 1 year old, no stains.", listing));
+  assert.ok(infoIsSafe("The price is $150.", listing));
+  assert.ok(!infoIsSafe("Maya said you can have it for $20.", listing));
+  assert.ok(!infoIsSafe("Sure, Zelle works.", listing));
 });

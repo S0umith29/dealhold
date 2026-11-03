@@ -1,11 +1,12 @@
 import { getChat, handleBuyerMessage, startChat, type Chat } from "./agent";
+import { db } from "./db";
 import { DealError, getListing } from "./deals";
 
 // Demo only: a few scripted buyers chat with the seller's assistant at the same time, so anyone
 // can watch it juggle them live in the seller's grid. The buyers are plain code (no AI); each
 // next line looks at the assistant's current price, like a real buyer would.
 
-type Step = (c: Chat) => string | null; // null: this buyer stops here
+type Step = ((c: Chat) => string | null) | "wait for seller"; // null: this buyer stops here
 type Persona = { name: string; steps: Step[] };
 
 const price = (c: Chat) => c.counter_cents / 100;
@@ -35,12 +36,14 @@ const PERSONAS: Persona[] = [
     ],
   },
   {
-    // Asks something only the seller knows: shows up as "Needs you" for Maya.
-    name: "Priya",
+    // Asks something only the seller knows: shows up as "Needs you" for Maya, and waits for her answer.
+    name: "Morgan",
     steps: [
       say("Is this still available?"),
       say("Do you still have the original receipt?"),
-      ifOpen((c) => `Ok. Would you take $${to5(price(c) * 0.85)}?`),
+      "wait for seller",
+      ifOpen((c) => `Ok, good to know. Would you take $${to5(price(c) * 0.85)}?`),
+      ifOpen((c) => `$${to5(best(c) + 10)} and I can come this weekend?`),
     ],
   },
   {
@@ -61,9 +64,24 @@ const PERSONAS: Persona[] = [
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const pause = () => sleep(2500 + Math.random() * 3500);
 
+// Waits (up to 15 minutes) until the seller answers this buyer's question on the dashboard.
+async function sellerAnswered(chatId: string) {
+  for (let i = 0; i < 300; i++) {
+    const open = db()
+      .prepare("SELECT 1 FROM seller_questions WHERE chat_id = ? AND answer IS NULL")
+      .get(chatId);
+    if (!open || !getChat(chatId)) return;
+    await sleep(3000);
+  }
+}
+
 async function runBuyer(chatId: string, persona: Persona, startDelay: number) {
   await sleep(startDelay);
   for (const step of persona.steps) {
+    if (step === "wait for seller") {
+      await sellerAnswered(chatId);
+      continue;
+    }
     const chat = getChat(chatId);
     if (!chat) return; // demo was reset
     const text = step(chat);

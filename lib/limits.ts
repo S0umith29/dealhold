@@ -25,6 +25,11 @@ const hits = new Map<string, number[]>();
 
 function take(key: string, w: Window) {
   const now = Date.now();
+  // Don't let many visitors (or faked addresses) grow this map forever.
+  if (hits.size > 20_000) {
+    for (const [k, times] of hits) if (now - (times.at(-1) ?? 0) > DAY) hits.delete(k);
+    if (hits.size > 20_000) hits.clear();
+  }
   const recent = (hits.get(key) ?? []).filter((t) => now - t < w.ms);
   if (recent.length >= w.limit) {
     hits.set(key, recent);
@@ -42,7 +47,14 @@ export function limit(checks: [string, Window][], message = "Slow down a little 
   }
 }
 
-// Render (and most hosts) put the visitor's address first in x-forwarded-for.
+// The visitor's address. Render sits behind Cloudflare, which sets cf-connecting-ip itself (a visitor
+// can't fake it). x-forwarded-for can be faked by the visitor, so it's only a fallback; the
+// everyone-together limits above still cap spending either way.
 export function visitor(req: Request) {
-  return req.headers.get("x-forwarded-for")?.split(",")[0].trim() || req.headers.get("x-real-ip") || "local";
+  return (
+    req.headers.get("cf-connecting-ip") ||
+    req.headers.get("true-client-ip") ||
+    req.headers.get("x-forwarded-for")?.split(",")[0].trim() ||
+    "local"
+  );
 }

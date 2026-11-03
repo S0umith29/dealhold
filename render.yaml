@@ -33,6 +33,9 @@ services:
         sync: false
       - key: DEMO_BUYER_PASSWORD
         sync: false
+      # Password for Maya's dashboard (/seller); give it to judges in the testing instructions
+      - key: SELLER_PASSWORD
+        sync: false
       - key: CRON_SECRET
         generateValue: true
       # Seller push notifications (copy from your local .env)

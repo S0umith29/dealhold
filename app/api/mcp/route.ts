@@ -58,6 +58,9 @@ const TOOLS = [
 
 // Public URL of this app, behind Render's proxy too.
 function origin(req: Request) {
+  // Prefer the configured address: request headers can be set by the caller.
+  const configured = process.env.PUBLIC_URL ?? process.env.RENDER_EXTERNAL_URL;
+  if (configured) return configured.replace(/\/$/, "");
   const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? new URL(req.url).host;
   const proto = req.headers.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
   return `${proto.split(",")[0]}://${host}`;

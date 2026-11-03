@@ -14,7 +14,26 @@ function configure() {
   return true;
 }
 
+// Only real browser push services: the server POSTs to this URL, so an arbitrary one would let
+// anyone make the server call internal or third-party addresses.
+const PUSH_HOSTS = /(^|\.)(fcm\.googleapis\.com|push\.services\.mozilla\.com|notify\.windows\.com|push\.apple\.com)$/;
+const MAX_SUBSCRIPTIONS = 20;
+
+export function validPushEndpoint(endpoint: string) {
+  try {
+    const url = new URL(endpoint);
+    return url.protocol === "https:" && PUSH_HOSTS.test(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
 export function saveSubscription(sub: webpush.PushSubscription) {
+  // Keep the newest few; old browsers drop off.
+  db().exec(
+    `DELETE FROM push_subscriptions WHERE endpoint NOT IN
+       (SELECT endpoint FROM push_subscriptions ORDER BY created_at DESC LIMIT ${MAX_SUBSCRIPTIONS - 1})`
+  );
   db()
     .prepare("INSERT OR REPLACE INTO push_subscriptions (endpoint, subscription) VALUES (?, ?)")
     .run(sub.endpoint, JSON.stringify(sub));

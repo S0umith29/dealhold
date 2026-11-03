@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { isSeller, sellerLockOn } from "@/lib/seller-auth";
+import { SignOutButton } from "@/components/SignOutButton";
 import { connection } from "next/server";
 import { demoMode, expireStaleHolds, salesStats, getListing, listDeals, listListings, publicDeal } from "@/lib/deals";
 import { ResetDemoButton } from "@/components/ResetDemoButton";
@@ -14,6 +17,7 @@ import { SimulateButton } from "@/components/SimulateButton";
 // Demo has a single seller (Maya), so no login yet.
 export default async function SellerPage() {
   await connection();
+  if (!(await isSeller())) redirect("/seller/login?next=/seller");
   // Also sweep on page load, so expiry works even without the scheduled job.
   await expireStaleHolds();
   const deals = listDeals();
@@ -32,6 +36,7 @@ export default async function SellerPage() {
           <div className="flex items-center gap-2">
             <NotificationsButton publicKey={process.env.VAPID_PUBLIC_KEY ?? ""} />
             {demoMode() && <ResetDemoButton />}
+            {sellerLockOn() && <SignOutButton />}
           </div>
         </div>
         {open.length === 0 && questions.length === 0 && (
