@@ -130,7 +130,7 @@ export function startChat(listingId: string, buyerName: string) {
   addMessage(
     id,
     "agent",
-    `Hi ${buyerName.replace(/\s*\(simulated\)$/, "")}! I'm ${listing.seller_name}'s assistant. Ask me anything about the ${listing.title.toLowerCase()}, or make an offer.`
+    `Hi ${buyerName.replace(/\s*\((simulated|AI agent)\)$/, "")}! I'm ${listing.seller_name}'s assistant. Ask me anything about the ${listing.title.toLowerCase()}, or make an offer.`
   );
   return id;
 }

@@ -165,7 +165,7 @@ export function BuyerActivity({
   const totals = [
     {
       id: "total",
-      buyer: `${rows.length} buyers`,
+      buyer: `${rows.length} ${rows.length === 1 ? "buyer" : "buyers"}`,
       item: "",
       stage: `${talking.length} talking`,
       bestOfferCents: null,

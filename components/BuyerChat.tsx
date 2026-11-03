@@ -75,6 +75,9 @@ export function BuyerChat({ listingId, sellerName, askCents, listingStatus, payp
   useEffect(() => {
     let saved: string | null = null;
     try {
+      // A checkout link from the buyer's AI assistant (?chat=...) opens the chat it negotiated.
+      const linked = new URLSearchParams(window.location.search).get("chat");
+      if (linked) localStorage.setItem(storageKey(listingId), linked);
       saved = localStorage.getItem(storageKey(listingId));
     } catch {}
     if (saved) {
