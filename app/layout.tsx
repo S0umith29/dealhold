@@ -5,6 +5,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "DealHold",
   description: "Your AI agent sells your used stuff. Buyers reserve with a PayPal hold.",
+  icons: { icon: "/icon.svg" },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
