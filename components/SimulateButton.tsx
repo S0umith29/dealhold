@@ -29,7 +29,7 @@ export function SimulateButton({ listingId }: { listingId: string }) {
       >
         {busy ? "Starting…" : "▶ Simulate 5 buyers"}
       </button>
-      {note && <span className="text-xs text-muted">{note}</span>}
+      <span className="text-xs text-muted">{note ?? "You only see this for demo purposes"}</span>
     </div>
   );
 }
