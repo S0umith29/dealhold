@@ -40,7 +40,7 @@ export default async function Home() {
           </Link>
         )}
         <Link href="/seller" className="rounded-xl border border-line bg-white p-5 hover:border-brand">
-          <p className="text-xs font-medium uppercase tracking-wide text-brand">Try it as Maya, the seller</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-brand">Try it as a seller</p>
           <p className="mt-1 text-lg font-semibold">Watch the assistant work</p>
           <p className="mt-1 text-sm text-muted">
             See every buyer live, answer the one question it couldn&apos;t, approve a held deal, and get paid with the
